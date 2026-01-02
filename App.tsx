@@ -9,7 +9,7 @@ import Admin from './pages/Admin';
 import BookedTrades from './pages/BookedTrades';
 import { User, WatchlistItem, TradeSignal, TradeStatus, LogEntry, ChatMessage } from './types';
 import { fetchSheetData, updateSheetData } from './services/googleSheetsService';
-import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen } from 'lucide-react';
+import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen, Briefcase, ExternalLink } from 'lucide-react';
 
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; 
 const SESSION_KEY = 'libra_user_session';
@@ -302,6 +302,16 @@ const App: React.FC = () => {
     }
   }, [playLongBeep, playUpdateBlip, handleRedirectToCard]);
 
+  // Fix for: handleSignalUpdate to satisfy (updated: TradeSignal) => Promise<boolean>
+  const handleSignalUpdate = useCallback(async (updated: TradeSignal): Promise<boolean> => {
+    const success = await updateSheetData('signals', 'UPDATE_SIGNAL', updated, updated.id);
+    if (success) {
+      await sync(false);
+      return true;
+    }
+    return false;
+  }, [sync]);
+
   useEffect(() => {
     const timer = setInterval(() => {
       const now = Date.now();
@@ -387,9 +397,22 @@ const App: React.FC = () => {
         <button onClick={toggleSound} className={`p-4 rounded-full border shadow-2xl transition-all active:scale-90 ${soundEnabled ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400 shadow-cyan-500/10' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
           {soundEnabled ? <Volume2 size={32} /> : <VolumeX size={32} />}
         </button>
+        
+        {/* DEMAT OPEN FLAG */}
+        <a 
+          href="https://oa.mynt.in/?ref=ZTN348" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="bg-emerald-600/90 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg border border-emerald-400/30 shadow-lg transition-all active:scale-95 flex items-center space-x-1.5"
+          title="Open Demat Account"
+        >
+          <Briefcase size={12} />
+          <span className="text-[9px] font-black uppercase tracking-tight">Open Demat</span>
+          <ExternalLink size={8} className="opacity-70" />
+        </a>
       </div>
-      {page === 'dashboard' && <Dashboard watchlist={watchlist} signals={signals} messages={messages} user={user} granularHighlights={granularHighlights} activeMajorAlerts={activeMajorAlerts} activeWatchlistAlerts={activeWatchlistAlerts} onSignalUpdate={sync} />}
-      {page === 'booked' && <BookedTrades signals={signals} historySignals={historySignals} user={user} granularHighlights={granularHighlights} onSignalUpdate={sync} />}
+      {page === 'dashboard' && <Dashboard watchlist={watchlist} signals={signals} messages={messages} user={user} granularHighlights={granularHighlights} activeMajorAlerts={activeMajorAlerts} activeWatchlistAlerts={activeWatchlistAlerts} onSignalUpdate={handleSignalUpdate} />}
+      {page === 'booked' && <BookedTrades signals={signals} historySignals={historySignals} user={user} granularHighlights={granularHighlights} onSignalUpdate={handleSignalUpdate} />}
       {page === 'stats' && <Stats signals={signals} historySignals={historySignals} />}
       {page === 'rules' && <Rules />}
       {user?.isAdmin && page === 'admin' && <Admin watchlist={watchlist} onUpdateWatchlist={() => {}} signals={signals} onUpdateSignals={() => {}} users={users} onUpdateUsers={() => {}} logs={logs} messages={messages} onNavigate={setPage} onHardSync={() => sync(true)} />}
