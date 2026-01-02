@@ -282,7 +282,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
                       </h4>
 
                       <a 
-                        href="https://aliceblueonline.com/open-account-fill-kyc-details/?C=WMPN459" 
+                        href="https://oa.mynt.in/?ref=ZTN348" 
                         target="_blank" 
                         rel="noopener noreferrer"
                         className="flex items-center justify-between w-full px-3 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all shadow-lg shadow-emerald-900/40 group/btn"
