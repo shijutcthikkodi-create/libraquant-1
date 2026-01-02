@@ -9,12 +9,13 @@ import Admin from './pages/Admin';
 import BookedTrades from './pages/BookedTrades';
 import { User, WatchlistItem, TradeSignal, TradeStatus, LogEntry, ChatMessage } from './types';
 import { fetchSheetData, updateSheetData } from './services/googleSheetsService';
-import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen } from 'lucide-react';
+import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen, Briefcase, ExternalLink } from 'lucide-react';
 
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; 
 const SESSION_KEY = 'libra_user_session';
 const POLL_INTERVAL = 8000; 
 const MAJOR_ALERT_DURATION = 5000; 
+const INTEL_ALERT_DURATION = 10000; // 10 seconds intensity period
 
 export type GranularHighlights = Record<string, Set<string>>;
 
@@ -55,6 +56,7 @@ const App: React.FC = () => {
   
   const [activeMajorAlerts, setActiveMajorAlerts] = useState<Record<string, number>>({});
   const [activeWatchlistAlerts, setActiveWatchlistAlerts] = useState<Record<string, number>>({});
+  const [intelAlertActive, setIntelAlertActive] = useState<number>(0);
   const [granularHighlights, setGranularHighlights] = useState<GranularHighlights>({});
   
   const prevSignalsRef = useRef<TradeSignal[]>([]);
@@ -89,13 +91,17 @@ const App: React.FC = () => {
   const handleRedirectToCard = useCallback((id: string) => {
     setPage('dashboard');
     const scrollTask = () => {
-      const el = document.getElementById(`signal-${id}`);
+      const el = id === 'top' ? document.getElementById('app-main-container') : document.getElementById(`signal-${id}`);
       const container = document.getElementById('app-main-container');
       if (el && container) {
-        const offset = 80; 
-        const elementPosition = el.getBoundingClientRect().top;
-        const offsetPosition = elementPosition + container.scrollTop - offset;
-        container.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+        if (id === 'top') {
+          container.scrollTo({ top: 0, behavior: 'smooth' });
+        } else {
+          const offset = 80; 
+          const elementPosition = el.getBoundingClientRect().top;
+          const offsetPosition = elementPosition + container.scrollTop - offset;
+          container.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+        }
       }
     };
     setTimeout(scrollTask, 350);
@@ -140,9 +146,35 @@ const App: React.FC = () => {
         osc.stop(ctx.currentTime + start + dur + 0.05);
       };
 
-      // Distinct institutional ping sequence
       playTone(2200, 0, 0.08);
       playTone(1800, 0.06, 0.12);
+    } catch (e) {}
+  }, [soundEnabled, audioInitialized]);
+
+  const playIntelPing = useCallback(() => {
+    if (!soundEnabled || !audioInitialized) return;
+    try {
+      const ctx = audioCtxRef.current;
+      if (!ctx) return;
+      if (ctx.state === 'suspended') ctx.resume();
+      
+      const playSonar = (freq: number, start: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq - 400, ctx.currentTime + start);
+        osc.frequency.exponentialRampToValueAtTime(freq, ctx.currentTime + start + 0.1);
+        gain.gain.setValueAtTime(0, ctx.currentTime + start);
+        gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + start + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + 1.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime + start);
+        osc.stop(ctx.currentTime + start + 1.5);
+      };
+
+      playSonar(1200, 0);
+      playSonar(1400, 0.2);
     } catch (e) {}
   }, [soundEnabled, audioInitialized]);
 
@@ -163,11 +195,6 @@ const App: React.FC = () => {
       gain.gain.linearRampToValueAtTime(0.15, now + 0.1); 
       gain.gain.setValueAtTime(0.15, now + 1.9);
       gain.gain.linearRampToValueAtTime(0, now + 2.0); 
-      const secondStart = now + 5.0;
-      gain.gain.setValueAtTime(0, secondStart);
-      gain.gain.linearRampToValueAtTime(0.15, secondStart + 0.1); 
-      gain.gain.setValueAtTime(0.15, secondStart + 1.9);
-      gain.gain.linearRampToValueAtTime(0, secondStart + 2.0); 
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
@@ -198,7 +225,8 @@ const App: React.FC = () => {
         let topIndex = -1;
         
         const now = Date.now();
-        const expirationTime = now + MAJOR_ALERT_DURATION;
+        const signalExp = now + MAJOR_ALERT_DURATION;
+        const intelExp = now + INTEL_ALERT_DURATION;
 
         setActiveMajorAlerts(prevMajor => {
           const nextMajor = { ...prevMajor };
@@ -235,25 +263,21 @@ const App: React.FC = () => {
                 }
 
                 if (majorUpdateFound) {
-                  nextMajor[sid] = expirationTime;
+                  nextMajor[sid] = signalExp;
                   if (s.sheetIndex > topIndex) { topIndex = s.sheetIndex; targetSid = sid; }
-                  if (s.isBTST && (s.status === TradeStatus.ACTIVE || s.status === TradeStatus.PARTIAL)) isBTSTUpdate = true;
                 }
                 
                 if (diff.size > 0) {
                   nextHighs[sid] = diff;
-                  nextMajor[sid] = expirationTime;
+                  nextMajor[sid] = signalExp;
                 }
               });
 
               data.watchlist.forEach(w => {
                 const old = prevWatchlistRef.current.find(o => o.symbol === w.symbol);
-                const isNew = !old && prevWatchlistRef.current.length > 0;
-                const isPriceChanged = old && Number(w.price) !== Number(old.price);
-
-                if (!isInitial && (isNew || isPriceChanged)) {
+                if (!isInitial && old && Number(w.price) !== Number(old.price)) {
                   watchChangeDetected = true;
-                  nextWatch[w.symbol] = expirationTime;
+                  nextWatch[w.symbol] = signalExp;
                 }
               });
 
@@ -264,13 +288,12 @@ const App: React.FC = () => {
           return nextMajor;
         });
 
-        // Detect new Admin Broadcasts (Intelligence)
         if (!isInitial && data.messages.length > 0) {
           const latestAdminMsg = data.messages.filter(m => m.isAdminReply).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
           const prevAdminMsg = prevMessagesRef.current.filter(m => m.isAdminReply).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
-          
           if (latestAdminMsg && (!prevAdminMsg || latestAdminMsg.id !== prevAdminMsg.id)) {
             intelChangeDetected = true;
+            setIntelAlertActive(intelExp);
           }
         }
 
@@ -278,7 +301,10 @@ const App: React.FC = () => {
            if (signalChangeDetected) {
              playLongBeep(isCriticalAlert, isBTSTUpdate);
              if (targetSid) handleRedirectToCard(targetSid);
-           } else if (watchChangeDetected || intelChangeDetected) {
+           } else if (intelChangeDetected) {
+             playIntelPing();
+             handleRedirectToCard('top');
+           } else if (watchChangeDetected) {
              playUpdateBlip();
            }
         }
@@ -300,24 +326,16 @@ const App: React.FC = () => {
     } finally {
       isFetchingRef.current = false;
     }
-  }, [playLongBeep, playUpdateBlip, handleRedirectToCard]);
+  }, [playLongBeep, playIntelPing, playUpdateBlip, handleRedirectToCard]);
 
   useEffect(() => {
     const timer = setInterval(() => {
       const now = Date.now();
       setActiveMajorAlerts(prev => {
         const next = { ...prev };
-        let majorChanged = false;
-        Object.keys(next).forEach(key => { if (now >= next[key]) { delete next[key]; majorChanged = true; } });
-        if (majorChanged) {
-          setGranularHighlights(prevHighs => {
-            const nextHighs = { ...prevHighs };
-            Object.keys(prev).forEach(key => { if (now >= prev[key]) delete nextHighs[key]; });
-            return nextHighs;
-          });
-          return next;
-        }
-        return prev;
+        let changed = false;
+        Object.keys(next).forEach(key => { if (now >= next[key]) { delete next[key]; changed = true; } });
+        return changed ? next : prev;
       });
       setActiveWatchlistAlerts(prev => {
         const next = { ...prev };
@@ -325,6 +343,7 @@ const App: React.FC = () => {
         Object.keys(next).forEach(key => { if (now >= next[key]) { delete next[key]; changed = true; } });
         return changed ? next : prev;
       });
+      setIntelAlertActive(prev => (prev > 0 && now >= prev) ? 0 : prev);
     }, 1000);
     return () => clearInterval(timer);
   }, []);
@@ -332,12 +351,7 @@ const App: React.FC = () => {
   useEffect(() => {
     sync(true);
     const poll = setInterval(() => sync(false), POLL_INTERVAL);
-    const handleVisibility = () => { if (!document.hidden) sync(false); };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      clearInterval(poll);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
+    return () => clearInterval(poll);
   }, [sync]);
 
   const toggleSound = () => {
@@ -346,6 +360,23 @@ const App: React.FC = () => {
     localStorage.setItem('libra_sound_enabled', String(next));
     if (!next) stopAlertAudio();
     if (next && !audioInitialized) initAudio();
+  };
+
+  const handleSendMessage = async (text: string) => {
+    if (!user || !text.trim()) return false;
+    const newMessage: Partial<ChatMessage> = {
+      userId: user.id,
+      senderName: user.name,
+      text: text.trim(),
+      timestamp: new Date().toISOString(),
+      isAdminReply: false
+    };
+    const success = await updateSheetData('messages', 'ADD', newMessage);
+    if (success) {
+      await sync(false);
+      return true;
+    }
+    return false;
   };
 
   if (!user) return <Login onLogin={(u) => {
@@ -369,7 +400,6 @@ const App: React.FC = () => {
             <Zap size={40} />
           </div>
           <h2 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter">Initialize Terminal</h2>
-          <p className="text-slate-400 text-sm mb-8 max-w-xs">Tap below to activate real-time institutional alerts and secure audio stream.</p>
           <button onClick={initAudio} className="w-full max-w-xs bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-900/40 uppercase tracking-[0.2em] text-xs transition-all active:scale-95">Activate Live Feed</button>
         </div>
       )}
@@ -387,8 +417,26 @@ const App: React.FC = () => {
         <button onClick={toggleSound} className={`p-4 rounded-full border shadow-2xl transition-all active:scale-90 ${soundEnabled ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400 shadow-cyan-500/10' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
           {soundEnabled ? <Volume2 size={32} /> : <VolumeX size={32} />}
         </button>
+        
+        {/* DEMAT OPEN FLAG */}
+        <a 
+          href="https://oa.mynt.in/?ref=ZTN348" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="bg-emerald-600 hover:bg-emerald-500 text-white p-3 rounded-2xl border border-emerald-400/30 shadow-2xl shadow-emerald-900/20 transition-all active:scale-95 flex flex-col items-center justify-center group animate-in slide-in-from-right-4 duration-500"
+          title="Open Demat Account"
+        >
+          <div className="flex items-center space-x-1.5">
+            <Briefcase size={16} />
+            <span className="text-[8px] font-black uppercase tracking-widest whitespace-nowrap">Open Demat</span>
+          </div>
+          <div className="mt-0.5 opacity-60 flex items-center">
+            <span className="text-[6px] font-bold uppercase tracking-tighter">Secure Partner Link</span>
+            <ExternalLink size={6} className="ml-1" />
+          </div>
+        </a>
       </div>
-      {page === 'dashboard' && <Dashboard watchlist={watchlist} signals={signals} messages={messages} user={user} granularHighlights={granularHighlights} activeMajorAlerts={activeMajorAlerts} activeWatchlistAlerts={activeWatchlistAlerts} onSignalUpdate={sync} />}
+      {page === 'dashboard' && <Dashboard watchlist={watchlist} signals={signals} messages={messages} user={user} granularHighlights={granularHighlights} activeMajorAlerts={activeMajorAlerts} activeWatchlistAlerts={activeWatchlistAlerts} intelAlertActive={intelAlertActive > 0} onSignalUpdate={sync} onSendMessage={handleSendMessage} />}
       {page === 'booked' && <BookedTrades signals={signals} historySignals={historySignals} user={user} granularHighlights={granularHighlights} onSignalUpdate={sync} />}
       {page === 'stats' && <Stats signals={signals} historySignals={historySignals} />}
       {page === 'rules' && <Rules />}
