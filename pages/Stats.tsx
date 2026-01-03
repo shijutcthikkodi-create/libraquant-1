@@ -1,7 +1,8 @@
-import React, { useMemo, useState, useEffect } from 'react';
+
+import React, { useMemo, useState, useLayoutEffect, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { TradeSignal, TradeStatus } from '../types';
-import { TrendingUp, Activity, Calendar, Zap, CheckCircle2, Clock, BarChart3, Filter, Target, Award, History as HistoryIcon, Layers, Briefcase } from 'lucide-react';
+import { TrendingUp, Activity, BarChart3, Filter, Award, Clock, Layers, Briefcase, History as HistoryIcon, Zap } from 'lucide-react';
 
 interface StatsProps {
   signals?: (TradeSignal & { sheetIndex?: number })[];
@@ -9,18 +10,31 @@ interface StatsProps {
 }
 
 const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
-  const [isMounted, setIsMounted] = useState(false);
-  const [chartKey, setChartKey] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [chartWidth, setChartWidth] = useState<number | string>('100%');
+  const [isReady, setIsReady] = useState(false);
 
-  useEffect(() => {
-    // Phase 1: Signal that we are ready
-    setIsMounted(true);
+  // Deep dimension fix: Measure the container explicitly using ResizeObserver
+  // and pass the numeric width to ResponsiveContainer to bypass its internal
+  // measurement race conditions during page transitions.
+  useLayoutEffect(() => {
+    if (!containerRef.current) return;
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry && entry.contentRect.width > 0) {
+        // We set the width to slightly less than 100% to prevent 
+        // potential infinite resizing loops in certain browser engines
+        setChartWidth(Math.floor(entry.contentRect.width));
+        setIsReady(true);
+      }
+    });
+
+    observer.observe(containerRef.current);
     
-    // Phase 2: Force one re-calculation after browser layout settles
-    const timer = setTimeout(() => {
-      setChartKey(prev => prev + 1);
-    }, 300);
-    return () => clearTimeout(timer);
+    return () => {
+      observer.disconnect();
+    };
   }, []);
 
   const getISTContext = () => {
@@ -142,25 +156,36 @@ const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatItem label="Today's Realized" value={formatCurrency(performance.todayPnL)} isPositive={performance.todayPnL >= 0} icon={Activity} highlight={true} subtext={`Realized Today (${performance.todayCount})`} />
-        <StatItem label="Monthly Surplus" value={formatCurrency(performance.monthlyPnL)} isPositive={performance.monthlyPnL >= 0} icon={HistoryIcon} subtext={`Sample: ${performance.totalMonthlyTrades} Trades`} />
-        <StatItem label="Win Rate" value={`${performance.overallWinRate.toFixed(1)}%`} isPositive={performance.overallWinRate >= 65} icon={Award} subtext="Aggregated Monthly Accuracy" />
+        <StatItem label="Today's Booked P&L" value={formatCurrency(performance.todayPnL)} isPositive={performance.todayPnL >= 0} icon={Activity} highlight={true} subtext={`Realized Today (${performance.todayCount})`} />
+        <StatItem label="Monthly Surplus (Total)" value={formatCurrency(performance.monthlyPnL)} isPositive={performance.monthlyPnL >= 0} icon={HistoryIcon} subtext={`Sample: ${performance.totalMonthlyTrades} Trades (Hist+Book)`} />
+        <StatItem label="Win Rate (Overall)" value={`${performance.overallWinRate.toFixed(1)}%`} isPositive={performance.overallWinRate >= 65} icon={Award} subtext="Aggregated Monthly Accuracy" />
         <StatItem label="BTST Reliability" value={`${performance.btstWinRate.toFixed(1)}%`} isPositive={performance.btstWinRate >= 65} icon={Clock} subtext="Overnight Target Accuracy" />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <StatItem label="Index Monthly P&L" value={formatCurrency(performance.indexPnL)} isPositive={performance.indexPnL >= 0} icon={Layers} subtext="Nifty / BankNifty Segment" />
+        <StatItem label="Stock Monthly P&L" value={formatCurrency(performance.stockPnL)} isPositive={performance.stockPnL >= 0} icon={Briefcase} subtext="Equity Options / Cash" />
+        <StatItem label="Intraday Accuracy" value={`${performance.intradayWinRate.toFixed(1)}%`} isPositive={performance.intradayWinRate >= 65} icon={Zap} subtext="Day-Trading Accuracy" />
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
         <div className="flex items-center justify-between mb-10 relative z-10">
             <div>
-              <h3 className="text-white font-bold flex items-center text-sm uppercase tracking-widest"><BarChart3 size={16} className="mr-3 text-blue-500" />Realized Surge Curve</h3>
-              <p className="text-[10px] text-slate-500 mt-1 uppercase font-bold tracking-tighter">7-Day Combined Data Lifecycle</p>
+              <h3 className="text-white font-bold flex items-center text-sm uppercase tracking-widest"><BarChart3 size={16} className="mr-3 text-blue-500" />Performance curve (Unified)</h3>
+              <p className="text-[10px] text-slate-500 mt-1 uppercase font-bold tracking-tighter">7-Day Combined History + Active Data Feed</p>
             </div>
         </div>
         
-        {/* ENSURE MIN DIMENSIONS AND KEY-BASED REFRESH */}
-        <div className="h-64 w-full relative z-10" style={{ minHeight: '256px', minWidth: '300px' }}>
-          {isMounted && (
-            <ResponsiveContainer key={chartKey} width="100%" height="100%" minWidth={0} minHeight={0}>
-              <BarChart data={performance.chartData}>
+        {/* Container with min-width/height to satisfy Recharts requirement during initial render */}
+        <div 
+          ref={containerRef}
+          className="w-full relative z-10 block" 
+          style={{ height: '300px', minWidth: '0px', minHeight: '300px', overflow: 'hidden' }}
+        >
+          {isReady && (
+            // Fix: Type casting chartWidth to any to resolve Recharts ResponsiveContainer width type mismatch
+            <ResponsiveContainer width={chartWidth as any} height={300} debounce={50}>
+              <BarChart data={performance.chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" opacity={0.3} />
                 <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10, fontWeight: 800}} dy={10} />
                 <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10, fontWeight: 800}} tickFormatter={(val) => `₹${Math.abs(val) >= 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
