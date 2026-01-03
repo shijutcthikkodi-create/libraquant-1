@@ -152,7 +152,6 @@ const App: React.FC = () => {
         osc.stop(ctx.currentTime + start + dur + 0.05);
       };
 
-      // Distinct institutional ping sequence
       playTone(2200, 0, 0.08);
       playTone(1800, 0.06, 0.12);
     } catch (e) {}
@@ -276,7 +275,6 @@ const App: React.FC = () => {
           return nextMajor;
         });
 
-        // Detect new Admin Broadcasts (Intelligence)
         if (!isInitial && data.messages.length > 0) {
           const latestAdminMsg = data.messages.filter(m => m.isAdminReply).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
           const prevAdminMsg = prevMessagesRef.current.filter(m => m.isAdminReply).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
@@ -409,7 +407,6 @@ const App: React.FC = () => {
           {soundEnabled ? <Volume2 size={32} /> : <VolumeX size={32} />}
         </button>
         
-        {/* DEMAT OPEN FLAG */}
         <a 
           href="https://oa.mynt.in/?ref=ZTN348" 
           target="_blank" 
@@ -423,10 +420,8 @@ const App: React.FC = () => {
         </a>
       </div>
 
-      {/* FLOATING ROUND WHATSAPP ICON */}
       <a 
         href="https://wa.me/919539407707"
-
         target="_blank" 
         rel="noopener noreferrer"
         className="fixed bottom-24 right-6 md:bottom-10 md:right-10 z-[150] w-12 h-12 bg-[#25D366] hover:bg-[#128C7E] text-white rounded-full flex items-center justify-center shadow-[0_10px_40px_rgba(37,211,102,0.4)] border border-white/20 transition-all active:scale-95 hover:scale-110 group"

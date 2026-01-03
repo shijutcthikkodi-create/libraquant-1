@@ -1,5 +1,4 @@
-
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { TradeSignal, TradeStatus } from '../types';
 import { TrendingUp, Activity, Calendar, Zap, CheckCircle2, Clock, BarChart3, Filter, Target, Award, History as HistoryIcon, Layers, Briefcase } from 'lucide-react';
@@ -10,6 +9,20 @@ interface StatsProps {
 }
 
 const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
+  const [isMounted, setIsMounted] = useState(false);
+  const [chartKey, setChartKey] = useState(0);
+
+  useEffect(() => {
+    // Phase 1: Signal that we are ready
+    setIsMounted(true);
+    
+    // Phase 2: Force one re-calculation after browser layout settles
+    const timer = setTimeout(() => {
+      setChartKey(prev => prev + 1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, []);
+
   const getISTContext = () => {
     const now = new Date();
     const fmt = (d: Date, options: Intl.DateTimeFormatOptions) => 
@@ -51,7 +64,6 @@ const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
   const performance = useMemo(() => {
     const { today: istToday, monthYear: currentMonthYear, currentMonthLabel } = getISTContext();
     
-    // TODAY'S LEDGER (Active signals closed today)
     const activeClosedToday = (signals || []).filter(s => {
       const isClosed = s.status === TradeStatus.EXITED || s.status === TradeStatus.STOPPED || s.status === TradeStatus.ALL_TARGET;
       return isClosed && normalizeDate(s) === istToday;
@@ -63,7 +75,6 @@ const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
       todayPnL += Number(s.pnlRupees !== undefined ? s.pnlRupees : (s.pnlPoints || 0) * qty);
     });
 
-    // UNIFIED POOL (History + Active Closed)
     const unifiedMap = new Map<string, TradeSignal>();
     (historySignals || []).forEach(s => {
       const id = s.id || `hist-${normalizeDate(s)}-${s.symbol}-${s.entryPrice}`;
@@ -131,37 +142,35 @@ const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatItem label="Today's Booked P&L" value={formatCurrency(performance.todayPnL)} isPositive={performance.todayPnL >= 0} icon={Activity} highlight={true} subtext={`Realized Today (${performance.todayCount})`} />
-        <StatItem label="Monthly Surplus (Total)" value={formatCurrency(performance.monthlyPnL)} isPositive={performance.monthlyPnL >= 0} icon={HistoryIcon} subtext={`Sample: ${performance.totalMonthlyTrades} Trades (Hist+Book)`} />
-        <StatItem label="Win Rate (Overall)" value={`${performance.overallWinRate.toFixed(1)}%`} isPositive={performance.overallWinRate >= 65} icon={Award} subtext="Aggregated Monthly Accuracy" />
+        <StatItem label="Today's Realized" value={formatCurrency(performance.todayPnL)} isPositive={performance.todayPnL >= 0} icon={Activity} highlight={true} subtext={`Realized Today (${performance.todayCount})`} />
+        <StatItem label="Monthly Surplus" value={formatCurrency(performance.monthlyPnL)} isPositive={performance.monthlyPnL >= 0} icon={HistoryIcon} subtext={`Sample: ${performance.totalMonthlyTrades} Trades`} />
+        <StatItem label="Win Rate" value={`${performance.overallWinRate.toFixed(1)}%`} isPositive={performance.overallWinRate >= 65} icon={Award} subtext="Aggregated Monthly Accuracy" />
         <StatItem label="BTST Reliability" value={`${performance.btstWinRate.toFixed(1)}%`} isPositive={performance.btstWinRate >= 65} icon={Clock} subtext="Overnight Target Accuracy" />
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        <StatItem label="Index Monthly P&L" value={formatCurrency(performance.indexPnL)} isPositive={performance.indexPnL >= 0} icon={Layers} subtext="Nifty / BankNifty Segment" />
-        <StatItem label="Stock Monthly P&L" value={formatCurrency(performance.stockPnL)} isPositive={performance.stockPnL >= 0} icon={Briefcase} subtext="Equity Options / Cash" />
-        <StatItem label="Intraday Accuracy" value={`${performance.intradayWinRate.toFixed(1)}%`} isPositive={performance.intradayWinRate >= 65} icon={Zap} subtext="Day-Trading Accuracy" />
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
         <div className="flex items-center justify-between mb-10 relative z-10">
             <div>
-              <h3 className="text-white font-bold flex items-center text-sm uppercase tracking-widest"><BarChart3 size={16} className="mr-3 text-blue-500" />Performance curve (Unified)</h3>
-              <p className="text-[10px] text-slate-500 mt-1 uppercase font-bold tracking-tighter">7-Day Combined History + Active Data Feed</p>
+              <h3 className="text-white font-bold flex items-center text-sm uppercase tracking-widest"><BarChart3 size={16} className="mr-3 text-blue-500" />Realized Surge Curve</h3>
+              <p className="text-[10px] text-slate-500 mt-1 uppercase font-bold tracking-tighter">7-Day Combined Data Lifecycle</p>
             </div>
         </div>
-        <div className="h-64 w-full relative z-10">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={performance.chartData}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" opacity={0.3} />
-              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10, fontWeight: 800}} dy={10} />
-              <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10, fontWeight: 800}} tickFormatter={(val) => `₹${Math.abs(val) >= 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
-              <Tooltip cursor={{fill: 'rgba(30, 41, 59, 0.2)'}} contentStyle={{backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', padding: '12px'}} itemStyle={{fontSize: '12px', fontWeight: 'bold'}} labelStyle={{color: '#64748b', fontSize: '10px', textTransform: 'uppercase', fontWeight: 900}} />
-              <Bar dataKey="pnl" radius={[6, 6, 0, 0]} barSize={45}>
-                {performance.chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? '#10b981' : '#f43f5e'} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+        
+        {/* ENSURE MIN DIMENSIONS AND KEY-BASED REFRESH */}
+        <div className="h-64 w-full relative z-10" style={{ minHeight: '256px', minWidth: '300px' }}>
+          {isMounted && (
+            <ResponsiveContainer key={chartKey} width="100%" height="100%" minWidth={0} minHeight={0}>
+              <BarChart data={performance.chartData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1e293b" opacity={0.3} />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10, fontWeight: 800}} dy={10} />
+                <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b', fontSize: 10, fontWeight: 800}} tickFormatter={(val) => `₹${Math.abs(val) >= 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
+                <Tooltip cursor={{fill: 'rgba(30, 41, 59, 0.2)'}} contentStyle={{backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', padding: '12px'}} itemStyle={{fontSize: '12px', fontWeight: 'bold'}} labelStyle={{color: '#64748b', fontSize: '10px', textTransform: 'uppercase', fontWeight: 900}} />
+                <Bar dataKey="pnl" radius={[6, 6, 0, 0]} barSize={45}>
+                  {performance.chartData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.pnl >= 0 ? '#10b981' : '#f43f5e'} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
     </div>
