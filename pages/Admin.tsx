@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { WatchlistItem, TradeSignal, OptionType, TradeStatus, User, LogEntry, ChatMessage } from '../types';
 import { 
@@ -6,7 +5,8 @@ import {
   History, Zap, Loader2, Database,
   Plus, ArrowUpCircle, ArrowDownCircle, X, Database as DatabaseIcon,
   UserPlus, Shield, User as UserIcon, CheckCircle2, Eye, EyeOff,
-  Key, TrendingUp, Send, MessageSquareCode, Radio as RadioIcon
+  Key, TrendingUp, Send, MessageSquareCode, Radio as RadioIcon,
+  Briefcase, Activity, Moon, MessageSquare
 } from 'lucide-react';
 import { updateSheetData } from '../services/googleSheetsService';
 
@@ -146,7 +146,11 @@ const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], mess
     if (!sigSymbol || !sigEntry || !sigSL) return;
     setIsSaving(true);
     
-    const targets = sigTargets.split(',').map(t => parseFloat(t.trim())).filter(n => !isNaN(n));
+    // Parse targets: flexible enough to handle "100, 110, 120" or "100,110"
+    const targets = sigTargets.split(',')
+      .map(t => parseFloat(t.trim()))
+      .filter(n => !isNaN(n));
+    
     const newSignal: any = {
         instrument: sigInstrument,
         symbol: sigSymbol,
@@ -174,7 +178,7 @@ const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], mess
         details: `New: ${newSignal.instrument} ${newSignal.symbol}`,
         type: 'TRADE'
       });
-      setSigSymbol(''); setSigEntry(''); setSigSL(''); setSigTargets(''); setSigComment(''); setSigQty('');
+      setSigSymbol(''); setSigEntry(''); setSigSL(''); setSigTargets(''); setSigComment(''); setSigQty(''); setSigIsBtst(false);
       setIsAddingSignal(false);
       if (onHardSync) onHardSync();
     }
@@ -325,9 +329,31 @@ const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], mess
                                 <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-tighter">Stop Loss</label>
                                 <input type="number" value={sigSL} onChange={e => setSigSL(e.target.value)} placeholder="0.00" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:border-blue-500 outline-none font-mono" />
                             </div>
-                            <div className="md:col-span-2">
-                                <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-tighter">Targets</label>
-                                <input type="text" value={sigTargets} onChange={e => setSigTargets(e.target.value)} placeholder="e.g. 120, 140, 180" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:border-blue-500 outline-none font-mono" />
+                            <div className="md:col-span-1">
+                                <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-tighter">Quantity</label>
+                                <input type="number" value={sigQty} onChange={e => setSigQty(e.target.value)} placeholder="0" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:border-blue-500 outline-none font-mono" />
+                            </div>
+                            <div className="md:col-span-1 flex flex-col justify-end pb-1">
+                                <button 
+                                  onClick={() => setSigIsBtst(!sigIsBtst)}
+                                  className={`flex items-center justify-center space-x-2 py-2.5 rounded-xl border transition-all ${sigIsBtst ? 'bg-amber-500/20 border-amber-500 text-amber-500 shadow-lg shadow-amber-900/20' : 'bg-slate-900 border-slate-700 text-slate-500'}`}
+                                >
+                                  <Moon size={14} className={sigIsBtst ? 'animate-pulse' : ''} />
+                                  <span className="text-[10px] font-black uppercase tracking-widest">BTST / Overnight</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-tighter">Targets (Separate with comma + space: ", ")</label>
+                            <input type="text" value={sigTargets} onChange={e => setSigTargets(e.target.value)} placeholder="e.g. 120, 140, 180" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:border-blue-500 outline-none font-mono" />
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-tighter">Trade Comment / Intel</label>
+                            <div className="relative">
+                                <MessageSquare size={14} className="absolute left-3 top-3 text-slate-500" />
+                                <input type="text" value={sigComment} onChange={e => setSigComment(e.target.value)} placeholder="e.g. Strong breakout above VWAP, keep trailing..." className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-xs text-white focus:border-blue-500 outline-none" />
                             </div>
                         </div>
 
@@ -359,42 +385,124 @@ const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], mess
                     ) : (
                         <div className="space-y-4">
                             {activeSignals.map((s) => (
-                                <div key={s.id} className="bg-slate-950/50 border border-slate-800 rounded-2xl p-5 flex flex-col lg:flex-row items-center justify-between gap-6">
-                                    <div className="flex items-center space-x-4 w-full lg:w-auto">
-                                        <div className={`p-2 rounded-xl ${s.action === 'BUY' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-rose-900/30 text-rose-400'}`}>
-                                            {s.action === 'BUY' ? <ArrowUpCircle size={24} /> : <ArrowDownCircle size={24} />}
+                                <div key={s.id} className="bg-slate-950/50 border border-slate-800 rounded-2xl p-5 flex flex-col items-center justify-between gap-6">
+                                    <div className="flex flex-col lg:flex-row items-center justify-between w-full gap-6">
+                                        <div className="flex items-center space-x-4 w-full lg:w-auto">
+                                            <div className={`p-2 rounded-xl ${s.action === 'BUY' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-rose-900/30 text-rose-400'}`}>
+                                                {s.action === 'BUY' ? <ArrowUpCircle size={24} /> : <ArrowDownCircle size={24} />}
+                                            </div>
+                                            <div>
+                                                <h4 className="font-mono font-bold text-white">{s.instrument} {s.symbol}</h4>
+                                                <p className="text-[10px] text-slate-500 font-mono">Entry: ₹{s.entryPrice} | SL: ₹{s.stopLoss}</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h4 className="font-mono font-bold text-white">{s.instrument} {s.symbol}</h4>
-                                            <p className="text-[10px] text-slate-500 font-mono">Entry: ₹{s.entryPrice} | SL: ₹{s.stopLoss}</p>
-                                        </div>
-                                    </div>
 
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full lg:w-auto">
-                                        <button 
-                                            onClick={() => triggerQuickUpdate(s, { targetsHit: (s.targetsHit || 0) + 1, status: TradeStatus.PARTIAL, comment: `Target ${(s.targetsHit || 0) + 1} Done!` }, "Target Hit")}
-                                            className="px-3 py-2 bg-emerald-900/20 text-emerald-400 border border-emerald-500/20 rounded-xl text-[10px] font-bold uppercase"
-                                        >
-                                            Hit Target {(s.targetsHit || 0) + 1}
-                                        </button>
-                                        <button 
-                                            onClick={() => triggerQuickUpdate(s, { status: TradeStatus.ALL_TARGET, comment: "Golden Trade! All targets hit." }, "All Done")}
-                                            className="px-3 py-2 bg-emerald-600 text-white rounded-xl text-[10px] font-bold uppercase shadow-lg shadow-emerald-900/40"
-                                        >
-                                            All Targets
-                                        </button>
-                                        <button 
-                                            onClick={() => triggerQuickUpdate(s, { status: TradeStatus.STOPPED, comment: "Stop Loss hit." }, "SL Hit")}
-                                            className="px-3 py-2 bg-rose-900/20 text-rose-400 border border-rose-500/20 rounded-xl text-[10px] font-bold uppercase"
-                                        >
-                                            SL Hit
-                                        </button>
-                                        <button 
-                                            onClick={() => triggerQuickUpdate(s, { status: TradeStatus.EXITED, comment: "Manual market exit." }, "Manual Exit")}
-                                            className="px-3 py-2 bg-slate-800 text-slate-300 rounded-xl text-[10px] font-bold uppercase"
-                                        >
-                                            Exit
-                                        </button>
+                                        <div className="flex flex-wrap items-center justify-end gap-3 w-full lg:w-auto">
+                                            {/* Quantity Input */}
+                                            <div className="flex items-center bg-slate-800 rounded-xl px-3 py-2 border border-slate-700">
+                                                <Briefcase size={12} className="text-blue-400 mr-2" />
+                                                <span className="text-[9px] font-black text-slate-500 uppercase mr-2">Qty:</span>
+                                                <input 
+                                                    type="number"
+                                                    defaultValue={s.quantity || ''}
+                                                    onBlur={(e) => {
+                                                        const val = e.target.value === '' ? 0 : parseInt(e.target.value);
+                                                        if (val !== s.quantity) {
+                                                            triggerQuickUpdate(s, { quantity: val }, "Qty Update");
+                                                        }
+                                                    }}
+                                                    placeholder="0"
+                                                    className="bg-transparent text-[10px] font-mono font-bold text-blue-400 w-12 outline-none"
+                                                />
+                                            </div>
+
+                                            {/* CMP Input */}
+                                            <div className="flex items-center bg-slate-800 rounded-xl px-3 py-2 border border-slate-700">
+                                                <Activity size={12} className="text-emerald-400 mr-2" />
+                                                <span className="text-[9px] font-black text-slate-500 uppercase mr-2">CMP:</span>
+                                                <input 
+                                                    type="number"
+                                                    defaultValue={s.cmp || ''}
+                                                    onBlur={(e) => {
+                                                        const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                                        if (val !== s.cmp) {
+                                                            triggerQuickUpdate(s, { cmp: val }, "CMP Update");
+                                                        }
+                                                    }}
+                                                    placeholder="0.00"
+                                                    className="bg-transparent text-[10px] font-mono font-bold text-emerald-400 w-16 outline-none"
+                                                />
+                                            </div>
+
+                                            {/* Status Dropdown */}
+                                            <div className="flex items-center bg-slate-800 rounded-xl px-3 py-2 border border-slate-700">
+                                                <span className="text-[9px] font-black text-slate-500 uppercase mr-2">Status:</span>
+                                                <select 
+                                                    value={s.status} 
+                                                    onChange={(e) => triggerQuickUpdate(s, { status: e.target.value as TradeStatus }, "Status Change")}
+                                                    className="bg-transparent text-[10px] font-bold text-white outline-none cursor-pointer"
+                                                >
+                                                    {Object.values(TradeStatus).map(status => (
+                                                        <option key={status} value={status} className="bg-slate-900">{status}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            {/* Targets Hit Control */}
+                                            <div className="flex items-center bg-slate-800 rounded-xl px-3 py-2 border border-slate-700">
+                                                <span className="text-[9px] font-black text-slate-500 uppercase mr-2">Hit:</span>
+                                                <div className="flex space-x-1">
+                                                    {[1, 2, 3].map(t => (
+                                                        <button 
+                                                            key={t}
+                                                            onClick={() => triggerQuickUpdate(s, { targetsHit: t, status: TradeStatus.PARTIAL, comment: `Target ${t} Done!` }, `T${t} Hit`)}
+                                                            className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-black transition-all ${ (s.targetsHit || 0) >= t ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600' }`}
+                                                        >
+                                                            {t}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* TSL Editable Option */}
+                                            <div className="flex items-center bg-slate-800 rounded-xl px-3 py-2 border border-slate-700">
+                                                <span className="text-[9px] font-black text-slate-500 uppercase mr-2">TSL:</span>
+                                                <input 
+                                                    type="number"
+                                                    defaultValue={s.trailingSL || ''}
+                                                    onBlur={(e) => {
+                                                        const val = e.target.value === '' ? null : parseFloat(e.target.value);
+                                                        if (val !== s.trailingSL) {
+                                                            triggerQuickUpdate(s, { trailingSL: val }, "TSL Update");
+                                                        }
+                                                    }}
+                                                    placeholder="None"
+                                                    className="bg-transparent text-[10px] font-mono font-bold text-yellow-500 w-16 outline-none"
+                                                />
+                                            </div>
+
+                                            {/* Quick Action Buttons */}
+                                            <div className="flex items-center gap-2">
+                                                <button 
+                                                    onClick={() => triggerQuickUpdate(s, { status: TradeStatus.ALL_TARGET, targetsHit: 3, comment: "Golden Trade! All targets hit." }, "All Done")}
+                                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase shadow-lg shadow-emerald-900/40"
+                                                >
+                                                    All Done
+                                                </button>
+                                                <button 
+                                                    onClick={() => triggerQuickUpdate(s, { status: TradeStatus.STOPPED, comment: "Stop Loss hit." }, "SL Hit")}
+                                                    className="px-4 py-2 bg-rose-900/20 text-rose-400 border border-rose-500/20 rounded-xl text-[10px] font-black uppercase hover:bg-rose-500/10"
+                                                >
+                                                    SL Hit
+                                                </button>
+                                                <button 
+                                                    onClick={() => triggerQuickUpdate(s, { status: TradeStatus.EXITED, comment: "Manual market exit." }, "Manual Exit")}
+                                                    className="px-4 py-2 bg-slate-800 text-slate-300 border border-slate-700 rounded-xl text-[10px] font-black uppercase hover:bg-slate-700"
+                                                >
+                                                    Exit
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             ))}

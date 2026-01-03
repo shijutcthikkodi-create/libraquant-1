@@ -54,7 +54,7 @@ const Rules: React.FC = () => {
       <div className="text-center py-6">
           <div className="inline-block px-4 py-2 bg-slate-900 border border-slate-800 rounded-full">
             <p className="text-[9px] text-slate-600 font-black uppercase tracking-[0.2em]">
-              LibraQuant Institutional Terminal • SEBI REG: NON-ADVISORY
+              LIBRAQUANT INSTITUTIONAL. SEBI REG:NO,NON-ADVISORY
             </p>
           </div>
       </div>

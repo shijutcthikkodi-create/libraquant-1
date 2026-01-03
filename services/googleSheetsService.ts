@@ -74,6 +74,8 @@ const parseSignalRow = (s: any, index: number, tabName: string): TradeSignal | n
     parsedTargets = rawTargets.split(',').map(t => parseFloat(t.trim())).filter(n => !isNaN(n));
   } else if (Array.isArray(rawTargets)) {
     parsedTargets = rawTargets.map(t => parseFloat(t)).filter(n => !isNaN(n));
+  } else if (rawTargets != null && !isNaN(Number(rawTargets))) {
+    parsedTargets = [Number(rawTargets)];
   }
 
   const rawId = getVal(s, 'id');
@@ -92,11 +94,12 @@ const parseSignalRow = (s: any, index: number, tabName: string): TradeSignal | n
     trailingSL: getNum(s, 'trailingSL') ?? null,
     pnlPoints: getNum(s, 'pnlPoints'),
     pnlRupees: getNum(s, 'pnlRupees'),
-    cmp: getNum(s, 'cmp'), // Explicitly parse CMP
+    cmp: getNum(s, 'cmp'), 
     action: (getVal(s, 'action') || 'BUY') as 'BUY' | 'SELL',
     status: normalizeStatus(getVal(s, 'status')),
     timestamp: getVal(s, 'timestamp') || new Date().toISOString(),
-    isBTST: isTrue(getVal(s, 'isBTST'))
+    isBTST: isTrue(getVal(s, 'isBTST')),
+    quantity: getNum(s, 'quantity') || 0
   };
 };
 
@@ -157,11 +160,19 @@ export const fetchSheetData = async (retries = 2): Promise<SheetData | null> => 
 export const updateSheetData = async (target: 'signals' | 'history' | 'watchlist' | 'users' | 'logs' | 'messages', action: string, payload: any, id?: string) => {
   if (!SCRIPT_URL) return false;
   try {
+    // Clone and sanitize payload for Google Sheets
+    const cleanPayload = { ...payload };
+    
+    // Ensure targets is a string before sending, using comma + space as requested
+    if (cleanPayload.targets && Array.isArray(cleanPayload.targets)) {
+      cleanPayload.targets = cleanPayload.targets.join(', ');
+    }
+
     await fetch(SCRIPT_URL, {
       method: 'POST',
       mode: 'no-cors', 
       headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({ target, action, payload, id })
+      body: JSON.stringify({ target, action, payload: cleanPayload, id })
     });
     return true; 
   } catch (error) { 

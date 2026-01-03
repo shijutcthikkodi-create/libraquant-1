@@ -1,6 +1,5 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
-import { Menu, X, BarChart2, Radio, ShieldAlert, LogOut, FileText, User as UserIcon, Scale, Clock, CheckCircle, AlertCircle, EyeOff, ShieldCheck, List, TrendingUp, TrendingDown, BellRing, Zap, ArrowUpCircle, ExternalLink, Briefcase, BookOpen } from 'lucide-react';
+import { Menu, X, BarChart2, Radio, ShieldAlert, LogOut, FileText, User as UserIcon, Scale, Clock, CheckCircle, AlertCircle, EyeOff, ShieldCheck, List, TrendingUp, TrendingDown, BellRing, Zap, ArrowUpCircle, ExternalLink, Briefcase, BookOpen, Info } from 'lucide-react';
 import { User, WatchlistItem } from '../types';
 import { FOOTER_TEXT, BRANDING_TEXT } from '../constants';
 
@@ -261,6 +260,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
           <NavItem page="booked" icon={CheckCircle} label="Booked Trades" />
           <NavItem page="stats" icon={BarChart2} label="P&L Analytics" />
           <NavItem page="rules" icon={ShieldAlert} label="Rules & Disclaimer" />
+          <NavItem page="about" icon={Info} label="About Us" />
           
           {/* DEMAT OPEN SECTION - REDESIGNED */}
           <div className="mt-6 px-1">
