@@ -425,7 +425,7 @@ const App: React.FC = () => {
 
       {/* FLOATING ROUND WHATSAPP ICON */}
       <a 
-        href="https://wa.me/?text=Official%20Libra%20Fin-Tech%20Support%20Group:%20https://chat.whatsapp.com/IaHejh1i0h09qewDUBoVNv" 
+        href="https://wa.me/?text=DISCUSSION%20ROOM%20F - premium%20group%20Group:%20https://chat.whatsapp.com/IaHejh1i0h09qewDUBoVNv" 
         target="_blank" 
         rel="noopener noreferrer"
         className="fixed bottom-24 right-6 md:bottom-10 md:right-10 z-[150] w-12 h-12 bg-[#25D366] hover:bg-[#128C7E] text-white rounded-full flex items-center justify-center shadow-[0_10px_40px_rgba(37,211,102,0.4)] border border-white/20 transition-all active:scale-95 hover:scale-110 group"
