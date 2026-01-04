@@ -126,16 +126,17 @@ const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], mess
   };
 
   const handleResetDevice = async (userToReset: User) => {
-    if (!window.confirm(`Clear Hardware Lock for ${userToReset.name}? User can bind next device on login.`)) return;
+    if (!window.confirm(`Clear hardware lock for ${userToReset.name}? This will force a password change on next binding.`)) return;
     setIsSaving(true);
-    const updatedUser = { ...userToReset, deviceId: null, lastPassword: '' };
+    // Setting lastPassword to current password forces a rotation on next binding attempt
+    const updatedUser = { ...userToReset, deviceId: null, lastPassword: userToReset.password };
     const success = await updateSheetData('users', 'UPDATE_USER', updatedUser, userToReset.id);
     if (success) {
       await updateSheetData('logs', 'ADD', {
         timestamp: new Date().toISOString(),
         user: 'ADMIN',
         action: 'DEVICE_UNLOCKED',
-        details: `Manual device reset for ${userToReset.name}`,
+        details: `Hardware lock cleared for ${userToReset.name}. Password rotation enforced.`,
         type: 'SECURITY'
       });
       if (onHardSync) onHardSync();
@@ -226,7 +227,6 @@ const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], mess
       ...(isClosing ? { lastTradedTimestamp: new Date().toISOString() } : {})
     };
     
-    // Attempt update using both unique ID and sheetIndex for maximum reliability
     const success = await updateSheetData('signals', 'UPDATE_SIGNAL', payload, signal.id);
     
     if (success) {
@@ -789,7 +789,7 @@ const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], mess
                   </div>
                </div>
                <p className="text-[9px] text-amber-500 font-bold uppercase leading-relaxed italic">
-                 Note: Changing the Access Key will automatically clear the hardware lock on the user's next login attempt.
+                 Note: Resetting a device forces a password change. Subscriber must use a NEW access key for their next terminal binding.
                </p>
             </div>
             <div className="p-6 bg-slate-950/50 border-t border-slate-800 flex space-x-3">

@@ -35,15 +35,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         localStorage.setItem('libra_hw_id', storedId);
     }
     setBrowserDeviceId(storedId);
-
-    if ((window as any).AppleID) {
-      (window as any).AppleID.auth.init({
-        clientId: 'com.libraquant.client',
-        scope: 'name email',
-        redirectURI: window.location.origin,
-        usePopup: true
-      });
-    }
   }, []);
 
   const completeLogin = async (sheetUser: any, isPasswordReset: boolean = false) => {
@@ -53,6 +44,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         const rawId = String(sheetUser.deviceId || '').trim();
         const savedDeviceId = (rawId && rawId !== "" && rawId !== "null" && rawId !== "undefined") ? rawId : null;
         
+        // Check if binding a new device or if password was changed
         if (isPasswordReset || !savedDeviceId) {
             const updatedUser = { 
                 ...sheetUser, 
@@ -63,13 +55,13 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             await updateSheetData('logs', 'ADD', {
               timestamp: new Date().toISOString(),
               user: sheetUser.name,
-              action: isPasswordReset ? 'RENEWAL_BIND' : 'DEVICE_BIND',
-              details: `Device locked for security.`,
+              action: isPasswordReset ? 'KEY_ROTATION_BIND' : 'INITIAL_BIND',
+              details: `Terminal bound to: ${browserDeviceId}`,
               type: 'SECURITY'
             });
             currentDeviceId = browserDeviceId;
         } else if (savedDeviceId !== browserDeviceId) {
-            setError(`SECURITY LOCK: Account active on another terminal. Contact Admin to reset.`);
+            setError(`SECURITY LOCK: This account is active on another device. Contact Admin to reset.`);
             setLoading(false);
             return;
         }
@@ -79,7 +71,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         timestamp: new Date().toISOString(),
         user: sheetUser.name,
         action: 'LOGIN_SUCCESS',
-        details: `Secure Login`,
+        details: `Access Granted`,
         type: 'SECURITY'
     });
 
@@ -113,7 +105,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         });
 
         if (!sheetUser) {
-            setError('Subscriber not found. Contact Admin.');
+            setError('Account not found. Contact Support.');
             setLoading(false);
             return;
         }
@@ -125,32 +117,56 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         }
 
         const isPasswordReset = String(sheetUser.lastPassword || '').trim() !== String(sheetUser.password).trim();
+        const rawSavedDeviceId = String(sheetUser.deviceId || '').trim();
+        const isDeviceCleared = !rawSavedDeviceId || rawSavedDeviceId === "" || rawSavedDeviceId === "null" || rawSavedDeviceId === "undefined";
 
-        if (sheetUser.expiryDate && !isPasswordReset) {
-            let expiryStr = sheetUser.expiryDate;
-            if (expiryStr.includes('-') && expiryStr.split('-')[0].length === 2) {
-              const parts = expiryStr.split('-');
-              expiryStr = `${parts[2]}-${parts[1]}-${parts[0]}`;
+        // 1. STRICT SUBSCRIPTION ENFORCEMENT
+        const rawExpiry = String(sheetUser.expiryDate || '').trim().toLowerCase();
+        const isPerpetual = rawExpiry === 'perpetual' || rawExpiry === 'admin' || !!sheetUser.isAdmin;
+
+        if (!isPerpetual) {
+            if (!sheetUser.expiryDate || rawExpiry === '') {
+                setError('SUBSCRIPTION DATA MISSING. CONTACT ADMIN.');
+                setLoading(false);
+                return;
             }
 
-            const expiry = new Date(expiryStr);
-            if (!isNaN(expiry.getTime())) {
-                expiry.setHours(23, 59, 59, 999);
-                if (new Date() > expiry) {
-                    setError('ACCESS EXPIRED.');
-                    setLoading(false);
-                    return;
-                }
+            let expiryStr = sheetUser.expiryDate;
+            const parts = expiryStr.split(/[-/]/);
+            if (parts.length === 3 && parts[0].length === 2) {
+                expiryStr = `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+
+            const expiryDate = new Date(expiryStr);
+            if (isNaN(expiryDate.getTime())) {
+                setError('INVALID EXPIRY FORMAT. CONTACT ADMIN.');
+                setLoading(false);
+                return;
+            }
+
+            expiryDate.setHours(23, 59, 59, 999);
+            if (new Date() > expiryDate) {
+                setError('ACCESS EXPIRED. RENEWAL REQUIRED.');
+                setLoading(false);
+                return;
             }
         }
 
-        if (isPasswordReset) {
-            setSuccessMsg('Renewal Detected. Secure binding updated.');
+        // 2. MULTI-DEVICE PREVENTION (MANDATORY PASSWORD CHANGE ON NEW DEVICE)
+        // If device is cleared (by admin) but password is same as last binding, block login.
+        if (!isPasswordReset && isDeviceCleared && sheetUser.lastPassword) {
+            setError('SECURITY POLICY: NEW ACCESS KEY REQUIRED FOR RE-ACTIVATION.');
+            setLoading(false);
+            return;
+        }
+
+        if (isPasswordReset && isDeviceCleared) {
+            setSuccessMsg('Terminal Security Verified. Binding updated.');
         }
 
         completeLogin(sheetUser, isPasswordReset);
     } catch (err) {
-        setError('Connection failed.');
+        setError('Terminal connection error.');
         setLoading(false);
     }
   };
@@ -229,7 +245,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <div className="mt-8 pt-6 border-t border-slate-800/50 text-center">
                 <p className="text-[10px] text-slate-600 font-mono leading-relaxed uppercase tracking-tighter">
                     Account locks to initial device.<br/>
-                    Renewals clear old security locks.
+                    Security policy: New hardware binding requires new access key.
                 </p>
             </div>
         </div>
