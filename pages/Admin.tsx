@@ -6,7 +6,7 @@ import {
   Plus, ArrowUpCircle, ArrowDownCircle, X, Database as DatabaseIcon,
   UserPlus, Shield, User as UserIcon, CheckCircle2, Eye, EyeOff,
   Key, TrendingUp, Send, MessageSquareCode, Radio as RadioIcon,
-  Briefcase, Activity, Moon, MessageSquare
+  Briefcase, Activity, Moon, MessageSquare, Check
 } from 'lucide-react';
 import { updateSheetData } from '../services/googleSheetsService';
 
@@ -26,6 +26,7 @@ interface AdminProps {
 const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], messages = [], onHardSync }) => {
   const [activeTab, setActiveTab] = useState<'SIGNALS' | 'CLIENTS' | 'BROADCAST' | 'LOGS'>('SIGNALS');
   const [isSaving, setIsSaving] = useState(false);
+  const [savingId, setSavingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [logFilter, setLogFilter] = useState<'ALL' | 'SECURITY' | 'TRADE' | 'SYSTEM' | 'USER'>('ALL');
 
@@ -146,7 +147,6 @@ const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], mess
     if (!sigSymbol || !sigEntry || !sigSL) return;
     setIsSaving(true);
     
-    // Parse targets: flexible enough to handle "100, 110, 120" or "100,110"
     const targets = sigTargets.split(',')
       .map(t => parseFloat(t.trim()))
       .filter(n => !isNaN(n));
@@ -211,9 +211,24 @@ const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], mess
   };
 
   const triggerQuickUpdate = async (signal: TradeSignal, updates: Partial<TradeSignal>, actionLabel: string) => {
+    setSavingId(signal.id);
     setIsSaving(true);
-    const payload = { ...signal, ...updates, lastTradedTimestamp: new Date().toISOString() };
+    
+    const isClosing = updates.status && (
+      updates.status === TradeStatus.EXITED || 
+      updates.status === TradeStatus.STOPPED || 
+      updates.status === TradeStatus.ALL_TARGET
+    );
+    
+    const payload = { 
+      ...signal, 
+      ...updates, 
+      ...(isClosing ? { lastTradedTimestamp: new Date().toISOString() } : {})
+    };
+    
+    // Attempt update using both unique ID and sheetIndex for maximum reliability
     const success = await updateSheetData('signals', 'UPDATE_SIGNAL', payload, signal.id);
+    
     if (success) {
       await updateSheetData('logs', 'ADD', {
         timestamp: new Date().toISOString(),
@@ -222,8 +237,9 @@ const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], mess
         details: `${signal.instrument}: ${updates.status || 'Updated'}`,
         type: 'TRADE'
       });
-      if (onHardSync) onHardSync();
+      if (onHardSync) await onHardSync();
     }
+    setSavingId(null);
     setIsSaving(false);
   };
 
@@ -373,8 +389,9 @@ const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], mess
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-                <div className="p-5 border-b border-slate-800 bg-slate-800/10">
+                <div className="p-5 border-b border-slate-800 bg-slate-800/10 flex justify-between items-center">
                     <h3 className="text-sm font-bold text-white uppercase tracking-wider">Active Signals ({activeSignals.length})</h3>
+                    {isSaving && <div className="flex items-center space-x-2 text-[10px] font-black text-blue-500 uppercase animate-pulse"><RefreshCw size={10} className="animate-spin" /> <span>Syncing Sheet...</span></div>}
                 </div>
 
                 <div className="p-5">
@@ -385,7 +402,7 @@ const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], mess
                     ) : (
                         <div className="space-y-4">
                             {activeSignals.map((s) => (
-                                <div key={s.id} className="bg-slate-950/50 border border-slate-800 rounded-2xl p-5 flex flex-col items-center justify-between gap-6">
+                                <div key={s.id} className={`bg-slate-950/50 border rounded-2xl p-5 flex flex-col items-center justify-between gap-6 transition-all ${savingId === s.id ? 'border-blue-500 ring-1 ring-blue-500/20' : 'border-slate-800'}`}>
                                     <div className="flex flex-col lg:flex-row items-center justify-between w-full gap-6">
                                         <div className="flex items-center space-x-4 w-full lg:w-auto">
                                             <div className={`p-2 rounded-xl ${s.action === 'BUY' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-rose-900/30 text-rose-400'}`}>
@@ -403,8 +420,16 @@ const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], mess
                                                 <Briefcase size={12} className="text-blue-400 mr-2" />
                                                 <span className="text-[9px] font-black text-slate-500 uppercase mr-2">Qty:</span>
                                                 <input 
+                                                    key={`${s.id}-qty-${s.quantity}`}
                                                     type="number"
-                                                    defaultValue={s.quantity || ''}
+                                                    defaultValue={s.quantity ?? ''}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            const val = e.currentTarget.value === '' ? 0 : parseInt(e.currentTarget.value);
+                                                            if (val !== s.quantity) triggerQuickUpdate(s, { quantity: val }, "Qty Update");
+                                                            e.currentTarget.blur();
+                                                        }
+                                                    }}
                                                     onBlur={(e) => {
                                                         const val = e.target.value === '' ? 0 : parseInt(e.target.value);
                                                         if (val !== s.quantity) {
@@ -421,8 +446,17 @@ const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], mess
                                                 <Activity size={12} className="text-emerald-400 mr-2" />
                                                 <span className="text-[9px] font-black text-slate-500 uppercase mr-2">CMP:</span>
                                                 <input 
+                                                    key={`${s.id}-cmp-${s.cmp}`}
                                                     type="number"
-                                                    defaultValue={s.cmp || ''}
+                                                    step="any"
+                                                    defaultValue={s.cmp ?? ''}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            const val = e.currentTarget.value === '' ? 0 : parseFloat(e.currentTarget.value);
+                                                            if (val !== s.cmp) triggerQuickUpdate(s, { cmp: val }, "CMP Update");
+                                                            e.currentTarget.blur();
+                                                        }
+                                                    }}
                                                     onBlur={(e) => {
                                                         const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
                                                         if (val !== s.cmp) {
@@ -468,8 +502,17 @@ const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], mess
                                             <div className="flex items-center bg-slate-800 rounded-xl px-3 py-2 border border-slate-700">
                                                 <span className="text-[9px] font-black text-slate-500 uppercase mr-2">TSL:</span>
                                                 <input 
+                                                    key={`${s.id}-tsl-${s.trailingSL}`}
                                                     type="number"
-                                                    defaultValue={s.trailingSL || ''}
+                                                    step="any"
+                                                    defaultValue={s.trailingSL ?? ''}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            const val = e.currentTarget.value === '' ? null : parseFloat(e.currentTarget.value);
+                                                            if (val !== s.trailingSL) triggerQuickUpdate(s, { trailingSL: val }, "TSL Update");
+                                                            e.currentTarget.blur();
+                                                        }
+                                                    }}
                                                     onBlur={(e) => {
                                                         const val = e.target.value === '' ? null : parseFloat(e.target.value);
                                                         if (val !== s.trailingSL) {

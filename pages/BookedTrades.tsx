@@ -37,31 +37,39 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
     }
   };
 
-  // Helper to normalize dates for history signals (YYYY-MM-DD format)
+  /**
+   * Robust date normalizer that prioritizes:
+   * 1. lastTradedTimestamp (Realization time for active-turned-closed trades)
+   * 2. date (Standardized date column from history)
+   * 3. timestamp (Creation/Import fallback)
+   */
   const normalizeDate = (trade: TradeSignal): string => {
-    const ts = trade.lastTradedTimestamp || trade.timestamp;
-    if (ts && String(ts).includes('T')) return String(ts).split('T')[0];
-    
-    const rawDate = String(trade.date || '').trim();
-    if (!rawDate) return '';
+    const rawVal = trade.lastTradedTimestamp || trade.date || trade.timestamp;
+    if (!rawVal) return '';
 
-    if (rawDate.includes('-')) {
-      const parts = rawDate.split('-');
-      if (parts[0].length === 4) return rawDate;
-      if (parts.length === 3 && parts[2].length === 4) {
+    // Handle ISO strings or Date objects
+    // Fix: cast rawVal to any to allow instanceof check on potentially object types from dynamic data sources
+    if ((rawVal as any) instanceof Date || (typeof rawVal === 'string' && rawVal.includes('T'))) {
+      const d = new Date(rawVal);
+      if (!isNaN(d.getTime())) {
+        return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+      }
+    }
+
+    // Handle common string formats like DD/MM/YYYY or DD-MM-YYYY
+    const str = String(rawVal).trim();
+    const parts = str.split(/[-/]/);
+    if (parts.length === 3) {
+      // YYYY-MM-DD
+      if (parts[0].length === 4) {
+        return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+      }
+      // DD-MM-YYYY
+      if (parts[2].length === 4) {
         return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
       }
     }
-    
-    if (rawDate.includes('/')) {
-      const parts = rawDate.split('/');
-      if (parts.length === 3) {
-        const y = parts[2].length === 4 ? parts[2] : `20${parts[2]}`;
-        const m = parts[1].padStart(2, '0');
-        const d = parts[0].padStart(2, '0');
-        return `${y}-${m}-${d}`;
-      }
-    }
+
     return '';
   };
 
@@ -72,20 +80,16 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
 
   const { groupedSignals, stats, monthlyStats, todayDateLabel } = useMemo(() => {
     const today = getISTDateString(new Date());
-    const currentMonthPrefix = today.split('-').slice(0, 2).join('-'); // YYYY-MM
+    const currentMonthPrefix = today.split('-').slice(0, 2).join('-'); // e.g., "2024-05"
     
-    const tradeMap = new Map<string, TradeSignal>();
-    
-    // Process Active Signals tab
-    (signals || []).forEach(item => {
-      if (!item.id) return;
-      const isClosed = item.status === TradeStatus.EXITED || item.status === TradeStatus.STOPPED || item.status === TradeStatus.ALL_TARGET;
-      if (isClosed) tradeMap.set(item.id, item);
-    });
+    const closedSignalsFromActive = (signals || []).filter(s => 
+      s.status === TradeStatus.EXITED || s.status === TradeStatus.STOPPED || s.status === TradeStatus.ALL_TARGET
+    );
 
-    // TODAY'S BOOKED (Closed trades in active signals tab with IST date = today)
-    const bookedToday = Array.from(tradeMap.values())
-      .filter(s => getISTDateString(s.lastTradedTimestamp || s.timestamp) === today);
+    // 1. TODAY'S BOOKED (Closed in active tab AND closed today IST)
+    const bookedToday = closedSignalsFromActive.filter(s => 
+      getISTDateString(s.lastTradedTimestamp || s.timestamp) === today
+    );
 
     const categories = {
       indexIntra: [] as TradeSignal[],
@@ -94,11 +98,11 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
       stockBtst: [] as TradeSignal[]
     };
 
-    let netPnL = 0;
+    let netTodayPnL = 0;
     bookedToday.forEach(s => {
       const qty = Number(s.quantity && s.quantity > 0 ? s.quantity : 1);
       const pnl = Number(s.pnlRupees !== undefined ? s.pnlRupees : (s.pnlPoints || 0) * qty);
-      netPnL += pnl;
+      netTodayPnL += pnl;
 
       const isIdx = isIndex(s.instrument);
       if (isIdx) {
@@ -110,16 +114,24 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
       }
     });
 
-    // MONTHLY POOL (History Tab Current Month + Active Signals Closed Current Month)
+    // 2. MONTHLY SURPLUS (History + Active Closed that fall into CURRENT MONTH)
     const unifiedMonthlyMap = new Map<string, TradeSignal>();
     
+    // Process History
     (historySignals || []).forEach(s => {
-      const id = s.id || `hist-${normalizeDate(s)}-${s.symbol}-${s.entryPrice}`;
-      if (normalizeDate(s).startsWith(currentMonthPrefix)) unifiedMonthlyMap.set(id, s);
+      const d = normalizeDate(s);
+      if (d && d.startsWith(currentMonthPrefix)) {
+        const id = s.id || `hist-${d}-${s.symbol}-${s.entryPrice}`;
+        unifiedMonthlyMap.set(id, s);
+      }
     });
     
-    Array.from(tradeMap.values()).forEach(s => {
-      if (normalizeDate(s).startsWith(currentMonthPrefix)) unifiedMonthlyMap.set(s.id, s);
+    // Process Active Closed
+    closedSignalsFromActive.forEach(s => {
+      const d = normalizeDate(s);
+      if (d && d.startsWith(currentMonthPrefix)) {
+        unifiedMonthlyMap.set(s.id, s);
+      }
     });
 
     let monthlyPnLTotal = 0;
@@ -140,7 +152,7 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
         stockIntra: sortByTime(categories.stockIntra),
         stockBtst: sortByTime(categories.stockBtst)
       },
-      stats: { net: netPnL, count: bookedToday.length },
+      stats: { net: netTodayPnL, count: bookedToday.length },
       monthlyStats: { net: monthlyPnLTotal, count: unifiedMonthlyMap.size },
       todayDateLabel: today.split('-').reverse().join('/')
     };
@@ -194,7 +206,7 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="space-y-8 animate-in fade-in duration-700">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-slate-800 pb-8">
         <div>
            <h2 className="text-3xl font-black text-white tracking-tighter uppercase leading-none mb-1 flex items-center">
@@ -220,7 +232,7 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
               <p className={`text-2xl font-mono font-black ${monthlyStats.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                 ₹{monthlyStats.net.toLocaleString('en-IN')}
               </p>
-              <p className="text-[8px] text-slate-600 font-bold uppercase mt-1">{monthlyStats.count} Total (Hist + Book)</p>
+              <p className="text-[8px] text-slate-600 font-bold uppercase mt-1">Current Month Summary</p>
            </div>
         </div>
       </div>
