@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
-import { Lock, Phone, Scale, Smartphone, ShieldBan, Loader2, KeyRound, ShieldAlert, CheckCircle2, Eye, EyeOff } from 'lucide-react';
+import { Scale, Phone, KeyRound, ShieldAlert, CheckCircle2, Eye, EyeOff, Loader2, Smartphone, ShieldCheck } from 'lucide-react';
 import { fetchSheetData, updateSheetData } from '../services/googleSheetsService';
 
 interface LoginProps {
@@ -17,51 +17,70 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [browserDeviceId, setBrowserDeviceId] = useState('');
 
   useEffect(() => {
-    let storedId = localStorage.getItem('libra_hw_id');
-    if (!storedId) {
-        const fingerprint = [
-            navigator.userAgent.length,
-            screen.colorDepth,
-            new Date().getTimezoneOffset(),
-            screen.height,
-            screen.width,
-            navigator.hardwareConcurrency || 4,
-            navigator.language,
-            navigator.maxTouchPoints
-        ].join('-');
-        
-        const randomStr = Math.random().toString(36).substring(2, 8).toUpperCase();
-        storedId = `LIBRA-${randomStr}-${fingerprint.slice(0, 10)}`;
-        localStorage.setItem('libra_hw_id', storedId);
-    }
-    setBrowserDeviceId(storedId);
+    // Generate a deterministic Fingerprint based on hardware signals
+    // This makes it extremely hard to bypass by just clearing cache
+    const generateFingerprint = () => {
+      const components = [
+        navigator.userAgent,
+        navigator.language,
+        screen.colorDepth,
+        screen.height,
+        screen.width,
+        navigator.hardwareConcurrency || 'unknown',
+        new Date().getTimezoneOffset(),
+        !!window.indexedDB,
+        !!window.sessionStorage,
+        !!window.localStorage,
+      ];
+      
+      const str = components.join('###');
+      // Simple hash function for deterministic ID
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32bit int
+      }
+      return 'LQN-' + Math.abs(hash).toString(36).toUpperCase();
+    };
+
+    const fingerprint = generateFingerprint();
+    setBrowserDeviceId(fingerprint);
+    // Also store it for consistency, though deterministic generation is primary
+    localStorage.setItem('libra_hw_id', fingerprint);
   }, []);
 
-  const completeLogin = async (sheetUser: any, isPasswordReset: boolean = false) => {
-    let currentDeviceId = sheetUser.deviceId;
+  const completeLogin = async (sheetUser: any, isPasswordReset: boolean) => {
+    const rawSavedId = String(sheetUser.deviceId || '').trim();
+    const hasExistingLock = rawSavedId && rawSavedId !== "" && rawSavedId !== "null" && rawSavedId !== "undefined";
 
     if (!sheetUser.isAdmin) {
-        const rawId = String(sheetUser.deviceId || '').trim();
-        const savedDeviceId = (rawId && rawId !== "" && rawId !== "null" && rawId !== "undefined") ? rawId : null;
-        
-        // Check if binding a new device or if password was changed
-        if (isPasswordReset || !savedDeviceId) {
+        // SCENARIO 1: First time login or Admin has cleared the ID
+        if (!hasExistingLock) {
             const updatedUser = { 
                 ...sheetUser, 
                 deviceId: browserDeviceId, 
                 lastPassword: sheetUser.password 
             };
-            await updateSheetData('users', 'UPDATE_USER', updatedUser, sheetUser.id);
+            
+            const success = await updateSheetData('users', 'UPDATE_USER', updatedUser, sheetUser.id);
+            if (!success) {
+                setError("Terminal handshake failed. Try again.");
+                setLoading(false);
+                return;
+            }
+
             await updateSheetData('logs', 'ADD', {
               timestamp: new Date().toISOString(),
               user: sheetUser.name,
-              action: isPasswordReset ? 'KEY_ROTATION_BIND' : 'INITIAL_BIND',
-              details: `Terminal bound to: ${browserDeviceId}`,
+              action: 'HARDWARE_BINDING',
+              details: `Locked to terminal: ${browserDeviceId}`,
               type: 'SECURITY'
             });
-            currentDeviceId = browserDeviceId;
-        } else if (savedDeviceId !== browserDeviceId) {
-            setError(`SECURITY LOCK: This account is active on another device. Contact Admin to reset.`);
+        } 
+        // SCENARIO 2: Device already locked, check for match
+        else if (rawSavedId !== browserDeviceId) {
+            setError(`SECURITY VIOLATION: This account is locked to another terminal. Contact Admin to reset.`);
             setLoading(false);
             return;
         }
@@ -70,8 +89,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     await updateSheetData('logs', 'ADD', {
         timestamp: new Date().toISOString(),
         user: sheetUser.name,
-        action: 'LOGIN_SUCCESS',
-        details: `Access Granted`,
+        action: 'ACCESS_GRANTED',
+        details: `Secure session started on ${browserDeviceId}`,
         type: 'SECURITY'
     });
 
@@ -105,7 +124,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         });
 
         if (!sheetUser) {
-            setError('Account not found. Contact Support.');
+            setError('Authorized subscriber not found.');
             setLoading(false);
             return;
         }
@@ -116,21 +135,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             return;
         }
 
-        const isPasswordReset = String(sheetUser.lastPassword || '').trim() !== String(sheetUser.password).trim();
-        const rawSavedDeviceId = String(sheetUser.deviceId || '').trim();
-        const isDeviceCleared = !rawSavedDeviceId || rawSavedDeviceId === "" || rawSavedDeviceId === "null" || rawSavedDeviceId === "undefined";
-
-        // 1. STRICT SUBSCRIPTION ENFORCEMENT
+        // 1. Subscription Integrity Check
         const rawExpiry = String(sheetUser.expiryDate || '').trim().toLowerCase();
         const isPerpetual = rawExpiry === 'perpetual' || rawExpiry === 'admin' || !!sheetUser.isAdmin;
 
         if (!isPerpetual) {
-            if (!sheetUser.expiryDate || rawExpiry === '') {
-                setError('SUBSCRIPTION DATA MISSING. CONTACT ADMIN.');
-                setLoading(false);
-                return;
-            }
-
             let expiryStr = sheetUser.expiryDate;
             const parts = expiryStr.split(/[-/]/);
             if (parts.length === 3 && parts[0].length === 2) {
@@ -138,22 +147,21 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             }
 
             const expiryDate = new Date(expiryStr);
-            if (isNaN(expiryDate.getTime())) {
-                setError('INVALID EXPIRY FORMAT. CONTACT ADMIN.');
-                setLoading(false);
-                return;
-            }
-
             expiryDate.setHours(23, 59, 59, 999);
-            if (new Date() > expiryDate) {
-                setError('ACCESS EXPIRED. RENEWAL REQUIRED.');
+            
+            if (isNaN(expiryDate.getTime()) || new Date() > expiryDate) {
+                setError('ACCESS EXPIRED. CONTACT ADMIN FOR RENEWAL.');
                 setLoading(false);
                 return;
             }
         }
 
-        // 2. MULTI-DEVICE PREVENTION (MANDATORY PASSWORD CHANGE ON NEW DEVICE)
-        // If device is cleared (by admin) but password is same as last binding, block login.
+        // 2. Hardware-Password Rotation Check
+        const isPasswordReset = String(sheetUser.lastPassword || '').trim() !== String(sheetUser.password).trim();
+        const rawSavedId = String(sheetUser.deviceId || '').trim();
+        const isDeviceCleared = !rawSavedId || rawSavedId === "" || rawSavedId === "null" || rawSavedId === "undefined";
+
+        // Forced rotation: If admin cleared the device, the user MUST change the password to re-bind
         if (!isPasswordReset && isDeviceCleared && sheetUser.lastPassword) {
             setError('SECURITY POLICY: NEW ACCESS KEY REQUIRED FOR RE-ACTIVATION.');
             setLoading(false);
@@ -161,91 +169,99 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         }
 
         if (isPasswordReset && isDeviceCleared) {
-            setSuccessMsg('Terminal Security Verified. Binding updated.');
+            setSuccessMsg('Hardware Security Verified. New binding accepted.');
         }
 
         completeLogin(sheetUser, isPasswordReset);
     } catch (err) {
-        setError('Terminal connection error.');
+        setError('Server synchronization failed. Check connection.');
         setLoading(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden relative">
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600"></div>
+      <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden relative">
+        <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-blue-600 via-cyan-500 to-emerald-500"></div>
         
         <div className="p-8">
-            <div className="text-center mb-8">
-                <div className="w-16 h-16 bg-gradient-to-tr from-blue-600 to-indigo-700 rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-lg shadow-blue-500/20">
-                    <Scale size={32} strokeWidth={2} className="text-white" />
+            <div className="text-center mb-10">
+                <div className="w-20 h-20 bg-gradient-to-tr from-blue-600 to-indigo-700 rounded-3xl mx-auto flex items-center justify-center mb-5 shadow-2xl shadow-blue-500/20">
+                    <Scale size={40} strokeWidth={2.5} className="text-white" />
                 </div>
-                <h1 className="text-2xl font-bold text-white tracking-tight">LibraQuant</h1>
-                <p className="text-slate-400 text-sm mt-1 uppercase tracking-widest font-mono text-[10px]">Institutional Terminal Access</p>
+                <h1 className="text-3xl font-black text-white tracking-tighter">LibraQuant</h1>
+                <p className="text-slate-500 text-[10px] mt-2 uppercase tracking-[0.3em] font-mono">Institutional Signal Terminal</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Subscriber Mobile</label>
-                    <div className="relative">
-                        <Phone className="absolute left-3 top-3.5 text-slate-500" size={16} />
+                <div className="space-y-2">
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Registered ID (Mobile)</label>
+                    <div className="relative group">
+                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-500 transition-colors" size={18} />
                         <input 
                             type="tel" 
                             maxLength={10}
                             value={phone}
                             onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-                            placeholder="Registered Mobile"
-                            className="w-full bg-slate-950 border border-slate-700 rounded-xl py-3.5 pl-10 pr-4 text-white focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all placeholder:text-slate-700 font-mono"
+                            placeholder="Mobile Number"
+                            className="w-full bg-slate-950 border border-slate-700 rounded-2xl py-4 pl-12 pr-4 text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-slate-700 font-mono text-sm"
                         />
                     </div>
                 </div>
 
-                <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-1.5 uppercase tracking-widest">Access Key</label>
-                    <div className="relative">
-                        <KeyRound className="absolute left-3 top-3.5 text-slate-500" size={16} />
+                <div className="space-y-2">
+                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Access Key</label>
+                    <div className="relative group">
+                        <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-500 transition-colors" size={18} />
                         <input 
                             type={showPassword ? "text" : "password"} 
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            placeholder="Enter Key"
-                            className="w-full bg-slate-950 border border-slate-700 rounded-xl py-3.5 pl-10 pr-12 text-white focus:ring-1 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all placeholder:text-slate-700 font-mono"
+                            placeholder="Terminal Key"
+                            className="w-full bg-slate-950 border border-slate-700 rounded-2xl py-4 pl-12 pr-14 text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-slate-700 font-mono text-sm"
                         />
                         <button 
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-3 p-1 text-slate-500 hover:text-slate-300 transition-colors"
+                            className="absolute right-4 top-1/2 -translate-y-1/2 p-1 text-slate-600 hover:text-slate-300 transition-colors"
                         >
-                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                         </button>
                     </div>
                 </div>
 
                 {error && (
-                    <div className="bg-rose-950/30 border border-rose-500/30 rounded-xl p-4 flex items-start space-x-3 animate-in fade-in slide-in-from-bottom-2">
-                        <ShieldAlert size={18} className="text-rose-500 mt-0.5 shrink-0" />
+                    <div className="bg-rose-950/30 border border-rose-500/30 rounded-2xl p-4 flex items-start space-x-3 animate-in fade-in zoom-in-95">
+                        <ShieldAlert size={20} className="text-rose-500 mt-0.5 shrink-0" />
                         <span className="text-rose-400 text-[11px] font-bold uppercase tracking-tight leading-relaxed">{error}</span>
                     </div>
                 )}
 
                 {successMsg && (
-                    <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-4 flex items-start space-x-3 animate-in fade-in slide-in-from-bottom-2">
-                        <CheckCircle2 size={18} className="text-emerald-500 mt-0.5 shrink-0" />
+                    <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-2xl p-4 flex items-start space-x-3 animate-in fade-in zoom-in-95">
+                        <ShieldCheck size={20} className="text-emerald-500 mt-0.5 shrink-0" />
                         <span className="text-emerald-400 text-[11px] font-bold uppercase tracking-tight leading-relaxed">{successMsg}</span>
                     </div>
                 )}
 
-                <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl transition-all shadow-xl shadow-blue-900/20 disabled:opacity-50 flex items-center justify-center text-sm uppercase tracking-widest">
-                    {loading ? <Loader2 className="animate-spin mr-2" size={18} /> : null}
-                    {loading ? 'Authenticating...' : 'Sign In To Terminal'}
+                <button 
+                  type="submit" 
+                  disabled={loading} 
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4.5 rounded-2xl transition-all shadow-[0_10px_30px_rgba(37,99,235,0.3)] disabled:opacity-50 flex items-center justify-center text-xs uppercase tracking-[0.2em]"
+                >
+                    {loading ? <Loader2 className="animate-spin mr-3" size={20} /> : <Smartphone className="mr-3" size={18} />}
+                    {loading ? 'Authenticating Terminal...' : 'Bind & Access Terminal'}
                 </button>
             </form>
 
-            <div className="mt-8 pt-6 border-t border-slate-800/50 text-center">
-                <p className="text-[10px] text-slate-600 font-mono leading-relaxed uppercase tracking-tighter">
-                    Account locks to initial device.<br/>
-                    Security policy: New hardware binding requires new access key.
+            <div className="mt-10 pt-8 border-t border-slate-800/50 text-center">
+                <div className="flex items-center justify-center space-x-2 mb-3">
+                   <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+                   <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Device Hash: {browserDeviceId || 'GENERATING...'}</span>
+                </div>
+                <p className="text-[10px] text-slate-600 font-bold leading-relaxed uppercase tracking-tighter max-w-[280px] mx-auto">
+                    Account is strictly locked to your hardware.<br/>
+                    Multiple device access is physically prohibited.
                 </p>
             </div>
         </div>
