@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import SignalCard from '../components/SignalCard';
 import { History, Moon, Zap, Activity, BarChart3, TrendingUp, Layers, Calendar } from 'lucide-react';
@@ -47,8 +46,6 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
     const rawVal = trade.lastTradedTimestamp || trade.date || trade.timestamp;
     if (!rawVal) return '';
 
-    // Handle ISO strings or Date objects
-    // Fix: cast rawVal to any to allow instanceof check on potentially object types from dynamic data sources
     if ((rawVal as any) instanceof Date || (typeof rawVal === 'string' && rawVal.includes('T'))) {
       const d = new Date(rawVal);
       if (!isNaN(d.getTime())) {
@@ -56,15 +53,12 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
       }
     }
 
-    // Handle common string formats like DD/MM/YYYY or DD-MM-YYYY
     const str = String(rawVal).trim();
     const parts = str.split(/[-/]/);
     if (parts.length === 3) {
-      // YYYY-MM-DD
       if (parts[0].length === 4) {
         return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
       }
-      // DD-MM-YYYY
       if (parts[2].length === 4) {
         return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
       }
@@ -80,16 +74,16 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
 
   const { groupedSignals, stats, monthlyStats, todayDateLabel } = useMemo(() => {
     const today = getISTDateString(new Date());
-    const currentMonthPrefix = today.split('-').slice(0, 2).join('-'); // e.g., "2024-05"
+    const currentMonthPrefix = today.split('-').slice(0, 2).join('-');
     
+    // 1. ALL CLOSED SIGNALS from Active Sheet (Prop: signals)
     const closedSignalsFromActive = (signals || []).filter(s => 
       s.status === TradeStatus.EXITED || s.status === TradeStatus.STOPPED || s.status === TradeStatus.ALL_TARGET
     );
 
-    // 1. TODAY'S BOOKED (Closed in active tab AND closed today IST)
-    const bookedToday = closedSignalsFromActive.filter(s => 
-      getISTDateString(s.lastTradedTimestamp || s.timestamp) === today
-    );
+    // Per user request: Today's Net P&L should be total of all closed positions currently in the signal sheet.
+    // We no longer filter by today's date for this calculation as the date should NOT matter if it's in the signal sheet.
+    const activeSheetClosedTrades = closedSignalsFromActive;
 
     const categories = {
       indexIntra: [] as TradeSignal[],
@@ -98,12 +92,16 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
       stockBtst: [] as TradeSignal[]
     };
 
-    let netTodayPnL = 0;
-    bookedToday.forEach(s => {
+    // Calculate Terminal Session Net P&L Stats (All closed items in the signals array)
+    let netActiveSheetPnL = 0;
+    activeSheetClosedTrades.forEach(s => {
       const qty = Number(s.quantity && s.quantity > 0 ? s.quantity : 1);
       const pnl = Number(s.pnlRupees !== undefined ? s.pnlRupees : (s.pnlPoints || 0) * qty);
-      netTodayPnL += pnl;
+      netActiveSheetPnL += pnl;
+    });
 
+    // Populate Categories from ALL closed signals found in the active sheet signals
+    closedSignalsFromActive.forEach(s => {
       const isIdx = isIndex(s.instrument);
       if (isIdx) {
         if (s.isBTST) categories.indexBtst.push(s);
@@ -114,10 +112,8 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
       }
     });
 
-    // 2. MONTHLY SURPLUS (History + Active Closed that fall into CURRENT MONTH)
+    // 3. MONTHLY SURPLUS Summary (Maintains use of historySignals for summary only)
     const unifiedMonthlyMap = new Map<string, TradeSignal>();
-    
-    // Process History
     (historySignals || []).forEach(s => {
       const d = normalizeDate(s);
       if (d && d.startsWith(currentMonthPrefix)) {
@@ -125,8 +121,6 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
         unifiedMonthlyMap.set(id, s);
       }
     });
-    
-    // Process Active Closed
     closedSignalsFromActive.forEach(s => {
       const d = normalizeDate(s);
       if (d && d.startsWith(currentMonthPrefix)) {
@@ -152,7 +146,7 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
         stockIntra: sortByTime(categories.stockIntra),
         stockBtst: sortByTime(categories.stockBtst)
       },
-      stats: { net: netTodayPnL, count: bookedToday.length },
+      stats: { net: netActiveSheetPnL, count: activeSheetClosedTrades.length },
       monthlyStats: { net: monthlyPnLTotal, count: unifiedMonthlyMap.size },
       todayDateLabel: today.split('-').reverse().join('/')
     };
@@ -220,11 +214,11 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
 
         <div className="flex flex-col sm:flex-row items-center gap-4">
            <div className="px-6 py-4 bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl flex flex-col items-center justify-center min-w-[180px] border-l-4 border-l-blue-500">
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] mb-1">Today's Net P&L</p>
+              <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] mb-1">Session Net P&L</p>
               <p className={`text-2xl font-mono font-black ${stats.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                 ₹{stats.net.toLocaleString('en-IN')}
               </p>
-              <p className="text-[8px] text-slate-600 font-bold uppercase mt-1">{stats.count} Trades Closed</p>
+              <p className="text-[8px] text-slate-600 font-bold uppercase mt-1">{stats.count} Closed Trades</p>
            </div>
            
            <div className="px-6 py-4 bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl flex flex-col items-center justify-center min-w-[180px] border-l-4 border-l-emerald-500">
@@ -244,10 +238,13 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
         <RenderSection title="Stock BTST" icon={Layers} colorClass="text-purple-400" signals={groupedSignals.stockBtst} />
       </div>
 
-      {stats.count === 0 && (
+      {groupedSignals.indexIntra.length === 0 && 
+       groupedSignals.indexBtst.length === 0 && 
+       groupedSignals.stockIntra.length === 0 && 
+       groupedSignals.stockBtst.length === 0 && (
         <div className="py-32 bg-slate-900/10 border border-dashed border-slate-800/50 rounded-3xl text-center">
           <History size={48} className="mx-auto text-slate-800 mb-4 opacity-30" />
-          <p className="text-slate-500 font-black uppercase tracking-widest text-sm italic">No trades closed in today's session</p>
+          <p className="text-slate-500 font-black uppercase tracking-widest text-sm italic">No closed trades currently in terminal</p>
         </div>
       )}
     </div>

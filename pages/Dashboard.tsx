@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import SignalCard from '../components/SignalCard';
 import { Clock, Zap, Activity, ShieldCheck, Send, Timer, ArrowRight, List, TrendingUp, TrendingDown, Target, MessageSquareCode, Radio as RadioIcon } from 'lucide-react';
@@ -26,8 +25,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   activeWatchlistAlerts = {},
   onSignalUpdate
 }) => {
-  const GRACE_PERIOD_MS = 60 * 1000;
-
   const parseFlexibleDate = (dateStr: string | undefined): Date | null => {
     if (!dateStr) return null;
     let d = new Date(dateStr);
@@ -38,18 +35,6 @@ const Dashboard: React.FC<DashboardProps> = ({
       else if (parts[0].length === 4) d = new Date(`${parts[0]}-${parts[1]}-${parts[2]}`);
     }
     return isNaN(d.getTime()) ? null : d;
-  };
-
-  const isTodayOrYesterdayIST = (date: Date) => {
-    if (!date || isNaN(date.getTime())) return false;
-    const now = new Date();
-    const fmt = (d: Date) => new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-    const todayStr = fmt(now);
-    const targetStr = fmt(date);
-    if (todayStr === targetStr) return true;
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    return targetStr === fmt(yesterday);
   };
 
   const lastGivenTrade = useMemo(() => {
@@ -64,15 +49,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, [messages]);
 
   const liveSignals = useMemo(() => {
-    const now = new Date();
-    return (signals || []).filter(signal => {
-      const signalDate = parseFlexibleDate(signal.timestamp);
-      if (!signalDate || !isTodayOrYesterdayIST(signalDate)) return false;
-      const isLive = signal.status === TradeStatus.ACTIVE || signal.status === TradeStatus.PARTIAL;
-      if (isLive) return true;
-      const closeTime = parseFlexibleDate(signal.lastTradedTimestamp || signal.timestamp);
-      return closeTime && (now.getTime() - closeTime.getTime()) < GRACE_PERIOD_MS;
-    });
+    // Per user request: Show all signals that are in the signal sheet.
+    // Date should NOT matter if the signal exists in the provided signals array.
+    // This ensures closed BTST and other realized trades stay visible as long as they are in the active sheet.
+    return (signals || []);
   }, [signals]);
 
   const sortedSignals = useMemo(() => {
