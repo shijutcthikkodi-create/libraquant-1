@@ -9,12 +9,15 @@ import Admin from './pages/Admin';
 import BookedTrades from './pages/BookedTrades';
 import { User, WatchlistItem, TradeSignal, TradeStatus, LogEntry, ChatMessage } from './types';
 import { fetchSheetData, updateSheetData } from './services/googleSheetsService';
-import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen, Briefcase, ExternalLink, MessageCircle } from 'lucide-react';
+// Added Activity to the imports below to fix the error on line 460
+import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen, Briefcase, ExternalLink, MessageCircle, ShieldAlert, AlertTriangle, ArrowRight, CheckCircle2, Activity } from 'lucide-react';
 
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; 
 const SESSION_KEY = 'libra_user_session';
+const DISCLOSURE_KEY = 'libra_risk_accepted';
 const POLL_INTERVAL = 8000; 
-const MAJOR_ALERT_DURATION = 5000; 
+const MAJOR_ALERT_DURATION = 15000; 
+const INTEL_ALERT_DURATION = 60000; 
 
 export type GranularHighlights = Record<string, Set<string>>;
 
@@ -53,6 +56,10 @@ const App: React.FC = () => {
     return null;
   });
 
+  const [disclosureAccepted, setDisclosureAccepted] = useState(() => {
+    return localStorage.getItem(DISCLOSURE_KEY) === 'true';
+  });
+
   const [page, setPage] = useState('dashboard');
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [signals, setSignals] = useState<TradeSignal[]>([]);
@@ -67,11 +74,14 @@ const App: React.FC = () => {
   
   const [activeMajorAlerts, setActiveMajorAlerts] = useState<Record<string, number>>({});
   const [activeWatchlistAlerts, setActiveWatchlistAlerts] = useState<Record<string, number>>({});
+  const [activeIntelAlert, setActiveIntelAlert] = useState<number>(0);
   const [granularHighlights, setGranularHighlights] = useState<GranularHighlights>({});
   
   const prevSignalsRef = useRef<TradeSignal[]>([]);
   const prevWatchlistRef = useRef<WatchlistItem[]>([]);
   const prevMessagesRef = useRef<ChatMessage[]>([]);
+  const lastIntelIdRef = useRef<string | null>(null);
+
   const audioCtxRef = useRef<AudioContext | null>(null);
   const activeOscillatorRef = useRef<OscillatorNode | null>(null);
   const activeGainRef = useRef<GainNode | null>(null);
@@ -157,6 +167,37 @@ const App: React.FC = () => {
     } catch (e) {}
   }, [soundEnabled, audioInitialized]);
 
+  const playIntelAlert = useCallback(() => {
+    if (!soundEnabled || !audioInitialized) return;
+    try {
+      const ctx = audioCtxRef.current;
+      if (!ctx) return;
+      if (ctx.state === 'suspended') ctx.resume();
+      const now = ctx.currentTime;
+      
+      // Play exactly 3 beeps with clear separation
+      const delays = [0, 0.6, 1.2];
+      delays.forEach((delay) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1200, now + delay);
+        
+        gain.gain.setValueAtTime(0, now + delay);
+        gain.gain.linearRampToValueAtTime(0.2, now + delay + 0.05);
+        gain.gain.setValueAtTime(0.2, now + delay + 0.3);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + delay + 0.4);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + delay);
+        osc.stop(now + delay + 0.45);
+      });
+    } catch (e) {
+        console.error("Intel Audio failed", e);
+    }
+  }, [soundEnabled, audioInitialized]);
+
   const playLongBeep = useCallback((isCritical = false, isBTST = false) => {
     if (!soundEnabled || !audioInitialized) return;
     stopAlertAudio();
@@ -170,15 +211,27 @@ const App: React.FC = () => {
       osc.type = (isBTST || isCritical) ? 'square' : 'sine';
       osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
       const now = ctx.currentTime;
+      
+      // Beep 1
       gain.gain.setValueAtTime(0, now);
       gain.gain.linearRampToValueAtTime(0.15, now + 0.1); 
       gain.gain.setValueAtTime(0.15, now + 1.9);
       gain.gain.linearRampToValueAtTime(0, now + 2.0); 
+      
+      // Beep 2
       const secondStart = now + 5.0;
       gain.gain.setValueAtTime(0, secondStart);
       gain.gain.linearRampToValueAtTime(0.15, secondStart + 0.1); 
       gain.gain.setValueAtTime(0.15, secondStart + 1.9);
       gain.gain.linearRampToValueAtTime(0, secondStart + 2.0); 
+
+      // Beep 3
+      const thirdStart = now + 10.0;
+      gain.gain.setValueAtTime(0, thirdStart);
+      gain.gain.linearRampToValueAtTime(0.15, thirdStart + 0.1); 
+      gain.gain.setValueAtTime(0.15, thirdStart + 1.9);
+      gain.gain.linearRampToValueAtTime(0, thirdStart + 2.0); 
+      
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
@@ -276,11 +329,12 @@ const App: React.FC = () => {
         });
 
         if (!isInitial && data.messages.length > 0) {
-          const latestAdminMsg = data.messages.filter(m => m.isAdminReply).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
-          const prevAdminMsg = prevMessagesRef.current.filter(m => m.isAdminReply).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+          const adminMessages = data.messages.filter(m => m.isAdminReply).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          const latestAdminMsg = adminMessages[0];
           
-          if (latestAdminMsg && (!prevAdminMsg || latestAdminMsg.id !== prevAdminMsg.id)) {
+          if (latestAdminMsg && latestAdminMsg.id !== lastIntelIdRef.current) {
             intelChangeDetected = true;
+            lastIntelIdRef.current = latestAdminMsg.id;
           }
         }
 
@@ -288,7 +342,10 @@ const App: React.FC = () => {
            if (signalChangeDetected) {
              playLongBeep(isCriticalAlert, isBTSTUpdate);
              if (targetSid) handleRedirectToCard(targetSid);
-           } else if (watchChangeDetected || intelChangeDetected) {
+           } else if (intelChangeDetected) {
+             playIntelAlert();
+             setActiveIntelAlert(Date.now() + INTEL_ALERT_DURATION);
+           } else if (watchChangeDetected) {
              playUpdateBlip();
            }
         }
@@ -310,7 +367,7 @@ const App: React.FC = () => {
     } finally {
       isFetchingRef.current = false;
     }
-  }, [playLongBeep, playUpdateBlip, handleRedirectToCard]);
+  }, [playLongBeep, playUpdateBlip, playIntelAlert, handleRedirectToCard]);
 
   const handleSignalUpdate = useCallback(async (updated: TradeSignal): Promise<boolean> => {
     const success = await updateSheetData('signals', 'UPDATE_SIGNAL', updated, updated.id);
@@ -344,20 +401,23 @@ const App: React.FC = () => {
         Object.keys(next).forEach(key => { if (now >= next[key]) { delete next[key]; changed = true; } });
         return changed ? next : prev;
       });
+      setActiveIntelAlert(prev => (now >= prev ? 0 : prev));
     }, 1000);
     return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
-    sync(true);
-    const poll = setInterval(() => sync(false), POLL_INTERVAL);
-    const handleVisibility = () => { if (!document.hidden) sync(false); };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      clearInterval(poll);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, [sync]);
+    if (user && disclosureAccepted) {
+        sync(true);
+        const poll = setInterval(() => sync(false), POLL_INTERVAL);
+        const handleVisibility = () => { if (!document.hidden) sync(false); };
+        document.addEventListener('visibilitychange', handleVisibility);
+        return () => {
+          clearInterval(poll);
+          document.removeEventListener('visibilitychange', handleVisibility);
+        };
+    }
+  }, [sync, user, disclosureAccepted]);
 
   const toggleSound = () => {
     const next = !soundEnabled;
@@ -367,16 +427,76 @@ const App: React.FC = () => {
     if (next && !audioInitialized) initAudio();
   };
 
+  const handleAcceptDisclosure = () => {
+    localStorage.setItem(DISCLOSURE_KEY, 'true');
+    setDisclosureAccepted(true);
+  };
+
   if (!user) return <Login onLogin={(u) => {
     localStorage.setItem(SESSION_KEY, JSON.stringify({ user: u, timestamp: Date.now() }));
     setUser(u);
-    sync(true);
   }} />;
+
+  if (!disclosureAccepted) {
+    return (
+        <div className="fixed inset-0 z-[500] bg-slate-950 overflow-y-auto px-4 py-8 md:py-16 flex justify-center items-start">
+            <div className="max-w-xl w-full bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden relative animate-in zoom-in-95 duration-300">
+                <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-amber-600 via-amber-400 to-amber-600"></div>
+                <div className="p-8">
+                    <div className="flex items-center space-x-4 mb-6">
+                        <div className="w-12 h-12 bg-amber-500/20 rounded-2xl flex items-center justify-center text-amber-500">
+                            <AlertTriangle size={28} />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-black text-white uppercase tracking-tighter">Risk Disclosures on Derivatives</h2>
+                            <p className="text-slate-500 text-[9px] font-black uppercase tracking-widest mt-0.5">Mandatory Regulatory Notification</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4 mb-8">
+                        {[
+                            { text: "9 out of 10 individual traders in the equity Futures and Options (F&O) segment incurred net losses.", icon: ShieldAlert },
+                            { text: "On average, the loss-making traders registered a net trading loss close to ₹50,000.", icon: BarChart2 },
+                            { text: "Over and above the net trading losses incurred, loss makers expended an additional 28% of net trading losses as transaction costs.", icon: Zap },
+                            { text: "Those making net trading profits incurred between 15% to 50% of such profits as transaction costs.", icon: Activity }
+                        ].map((item, idx) => (
+                            <div key={idx} className="flex items-start space-x-4 bg-slate-950/50 p-4 rounded-2xl border border-slate-800/50 group hover:border-amber-500/20 transition-colors">
+                                <div className="mt-0.5 p-1.5 bg-slate-800 rounded-lg text-slate-500 group-hover:text-amber-500 transition-colors">
+                                    <item.icon size={14} />
+                                </div>
+                                <p className="text-sm font-medium text-slate-300 leading-relaxed">{item.text}</p>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50 mb-8">
+                        <p className="text-[10px] text-slate-500 font-bold leading-relaxed italic">
+                            Source: SEBI study dated January 25, 2023, on "Analysis of Profit and Loss of Individual Traders dealing in equity Futures and Options (F&O) Segment," based on FY 2021-22 data.
+                        </p>
+                    </div>
+
+                    <button 
+                        onClick={handleAcceptDisclosure}
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-2xl transition-all shadow-xl shadow-blue-900/30 flex items-center justify-center text-xs uppercase tracking-[0.2em] group"
+                    >
+                        <CheckCircle2 className="mr-3 group-hover:scale-110 transition-transform" size={20} />
+                        Accept and Enter Terminal
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+  }
 
   return (
     <Layout 
       user={user} 
-      onLogout={() => { localStorage.removeItem(SESSION_KEY); setUser(null); }} 
+      onLogout={() => { 
+        localStorage.removeItem(SESSION_KEY); 
+        localStorage.removeItem(DISCLOSURE_KEY);
+        setUser(null); 
+        setDisclosureAccepted(false);
+      }} 
       currentPage={page} 
       onNavigate={setPage}
       watchlist={watchlist}
@@ -434,7 +554,7 @@ const App: React.FC = () => {
         </span>
       </a>
 
-      {page === 'dashboard' && <Dashboard watchlist={watchlist} signals={signals} messages={messages} user={user} granularHighlights={granularHighlights} activeMajorAlerts={activeMajorAlerts} activeWatchlistAlerts={activeWatchlistAlerts} onSignalUpdate={handleSignalUpdate} />}
+      {page === 'dashboard' && <Dashboard watchlist={watchlist} signals={signals} messages={messages} user={user} granularHighlights={granularHighlights} activeMajorAlerts={activeMajorAlerts} activeWatchlistAlerts={activeWatchlistAlerts} activeIntelAlert={activeIntelAlert} onSignalUpdate={handleSignalUpdate} />}
       {page === 'booked' && <BookedTrades signals={signals} historySignals={historySignals} user={user} granularHighlights={granularHighlights} onSignalUpdate={handleSignalUpdate} />}
       {page === 'stats' && <Stats signals={signals} historySignals={historySignals} />}
       {page === 'rules' && <Rules />}

@@ -143,13 +143,21 @@ export const fetchSheetData = async (retries = 2): Promise<SheetData | null> => 
         details: String(getVal(l, 'details') || ''),
         type: (String(getVal(l, 'type') || 'SYSTEM')).toUpperCase() as any
       })),
-      messages: (data.messages || []).map((m: any) => ({
-        id: String(getVal(m, 'id') || Math.random()),
-        userId: String(getVal(m, 'userId') || '').trim(),
-        text: String(getVal(m, 'text') || '').trim(),
-        timestamp: String(getVal(m, 'timestamp') || new Date().toISOString()),
-        isAdminReply: isTrue(getVal(m, 'isAdminReply'))
-      }))
+      messages: (data.messages || []).map((m: any) => {
+        const text = String(getVal(m, 'text') || '').trim();
+        const timestamp = String(getVal(m, 'timestamp') || '').trim();
+        // Use deterministic ID if sheet doesn't provide one to avoid duplicate alerts on polling
+        const id = String(getVal(m, 'id') || '').trim() || 
+                   `msg-${text.slice(0, 10)}-${timestamp}`.replace(/\s+/g, '-');
+        
+        return {
+          id,
+          userId: String(getVal(m, 'userId') || '').trim(),
+          text,
+          timestamp: timestamp || new Date().toISOString(),
+          isAdminReply: isTrue(getVal(m, 'isAdminReply'))
+        };
+      })
     };
   } catch (error) {
     if (retries > 0) return fetchSheetData(retries - 1);

@@ -12,6 +12,7 @@ interface DashboardProps {
   granularHighlights: GranularHighlights;
   activeMajorAlerts: Record<string, number>;
   activeWatchlistAlerts?: Record<string, number>;
+  activeIntelAlert?: number;
   onSignalUpdate: (updated: TradeSignal) => Promise<boolean>;
 }
 
@@ -23,6 +24,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   granularHighlights,
   activeMajorAlerts,
   activeWatchlistAlerts = {},
+  activeIntelAlert = 0,
   onSignalUpdate
 }) => {
   const parseFlexibleDate = (dateStr: string | undefined): Date | null => {
@@ -49,9 +51,6 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, [messages]);
 
   const liveSignals = useMemo(() => {
-    // Per user request: Show all signals that are in the signal sheet.
-    // Date should NOT matter if the signal exists in the provided signals array.
-    // This ensures closed BTST and other realized trades stay visible as long as they are in the active sheet.
     return (signals || []);
   }, [signals]);
 
@@ -72,6 +71,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     if (seconds < 3600) return `${Math.floor(seconds / 60)}M AGO`;
     return `${Math.floor(seconds / 3600)}H AGO`;
   };
+
+  const isIntelAlerting = activeIntelAlert > Date.now();
 
   return (
     <div className="space-y-6">
@@ -98,26 +99,26 @@ const Dashboard: React.FC<DashboardProps> = ({
         <div className="lg:col-span-2 space-y-6">
           {/* Market Intelligence Broadcast Space */}
           {latestAdminIntel && (
-            <div className="relative group overflow-hidden rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-900/20 to-slate-950 p-1">
+            <div className={`relative group overflow-hidden rounded-2xl border transition-all duration-700 ${isIntelAlerting ? 'border-blue-500 animate-card-pulse bg-blue-900/30' : 'border-blue-500/30 bg-gradient-to-br from-blue-900/20 to-slate-950'} p-1`}>
                <div className="absolute top-0 right-0 p-3 opacity-10">
                   <MessageSquareCode size={64} className="text-blue-500" />
                </div>
                <div className="relative bg-slate-900/80 rounded-[14px] p-5">
                   <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center space-x-2">
-                         <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
-                         <h3 className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em]">Neural Link: Market Intelligence</h3>
+                         <div className={`w-2 h-2 rounded-full ${isIntelAlerting ? 'bg-white animate-ping' : 'bg-blue-500 animate-pulse'}`}></div>
+                         <h3 className={`text-[10px] font-black uppercase tracking-[0.2em] ${isIntelAlerting ? 'text-white' : 'text-blue-400'}`}>Neural Link: Market Intelligence</h3>
                       </div>
                       <span className="text-[9px] font-mono text-slate-600 font-bold uppercase">{new Date(latestAdminIntel.timestamp).toLocaleTimeString()} IST</span>
                   </div>
-                  <div className="border-l-2 border-blue-500/50 pl-4 py-1">
-                     <p className="text-white text-sm font-bold leading-relaxed tracking-tight italic opacity-95">
+                  <div className={`border-l-2 pl-4 py-1 ${isIntelAlerting ? 'border-white' : 'border-blue-500/50'}`}>
+                     <p className={`text-sm font-bold leading-relaxed tracking-tight italic opacity-95 ${isIntelAlerting ? 'text-white' : 'text-white'}`}>
                         "{latestAdminIntel.text}"
                      </p>
                   </div>
                   <div className="mt-3 flex items-center space-x-2">
-                     <RadioIcon size={10} className="text-blue-500" />
-                     <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Broadcasted by Libra Terminal Admin</span>
+                     <RadioIcon size={10} className={isIntelAlerting ? 'text-white' : 'text-blue-500'} />
+                     <span className={`text-[8px] font-black uppercase tracking-widest ${isIntelAlerting ? 'text-white/70' : 'text-slate-500'}`}>Broadcasted by Libra Terminal Admin</span>
                   </div>
                </div>
             </div>

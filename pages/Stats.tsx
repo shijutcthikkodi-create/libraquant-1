@@ -50,27 +50,6 @@ const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
     };
   }, []);
 
-  const getISTContext = () => {
-    const now = new Date();
-    // 30 days ago from now
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(now.getDate() - 30);
-    
-    const fmt = (d: Date) => 
-      new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-    
-    return { 
-      today: fmt(now), 
-      thirtyDaysAgoStr: fmt(thirtyDaysAgo),
-      thirtyDaysAgoDate: thirtyDaysAgo
-    };
-  };
-
-  const isIndex = (instrument: string) => {
-    const indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX'];
-    return indices.includes(instrument.toUpperCase());
-  };
-
   const normalizeDate = (trade: TradeSignal): string => {
     const ts = trade.lastTradedTimestamp || trade.date || trade.timestamp;
     if (!ts) return '';
@@ -99,7 +78,10 @@ const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
   };
 
   const performance = useMemo(() => {
-    const { thirtyDaysAgoStr } = getISTContext();
+    const now = new Date();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(now.getDate() - 30);
+    const thirtyDaysAgoStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(thirtyDaysAgo);
     
     // Unified pool of realized trades
     const unifiedMap = new Map<string, TradeSignal>();
@@ -120,7 +102,9 @@ const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
     const combinedHistory = Array.from(unifiedMap.values());
     const rollingStats = { pnl: 0, indexPnL: 0, stockPnL: 0, overall: [] as number[], intraday: [] as number[], btst: [] as number[] };
 
-    // Chart Tracker (Last 14 Days for better mobile visual, but calculated from 30)
+    let firstTradeDate: string | null = null;
+
+    // Chart Tracker (Last 14 Days)
     const chartMap: Record<string, number> = {};
     for (let i = 13; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i);
@@ -131,14 +115,23 @@ const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
       const tradeDateStr = normalizeDate(trade);
       if (!tradeDateStr) return;
       
+      // Track absolute first trade date for the UI range label
+      if (!firstTradeDate || tradeDateStr < firstTradeDate) {
+        firstTradeDate = tradeDateStr;
+      }
+
       const qty = Number(trade.quantity && trade.quantity > 0 ? trade.quantity : 1);
       const pnl = Number(trade.pnlRupees !== undefined ? trade.pnlRupees : (trade.pnlPoints || 0) * qty);
 
-      // Trailing 30-Day Filter
+      // Trailing 30-Day Filter for Statistics calculation
       if (tradeDateStr >= thirtyDaysAgoStr) {
         rollingStats.pnl += pnl;
         rollingStats.overall.push(pnl);
-        if (isIndex(trade.instrument)) rollingStats.indexPnL += pnl; else rollingStats.stockPnL += pnl;
+        const instrument = trade.instrument || '';
+        const indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX'];
+        const isIdx = indices.includes(instrument.toUpperCase());
+        
+        if (isIdx) rollingStats.indexPnL += pnl; else rollingStats.stockPnL += pnl;
         if (trade.isBTST) rollingStats.btst.push(pnl); else rollingStats.intraday.push(pnl);
       }
       
@@ -150,6 +143,16 @@ const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
 
     const calculateWinRate = (list: number[]) => list.length === 0 ? 0 : (list.filter(v => v > 0).length / list.length) * 100;
 
+    // Format the range label: e.g., "DEC 20 TO JAN 20"
+    const formatDateLabel = (isoStr: string) => {
+      const d = new Date(isoStr);
+      return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }).toUpperCase();
+    };
+
+    const dateRangeLabel = firstTradeDate 
+      ? `${formatDateLabel(firstTradeDate)} TO ${formatDateLabel(now.toISOString())}`
+      : `SCANNING DATASHEET...`;
+
     return {
       rollingPnL: rollingStats.pnl,
       indexPnL: rollingStats.indexPnL,
@@ -158,6 +161,7 @@ const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
       intradayWinRate: calculateWinRate(rollingStats.intraday),
       btstWinRate: calculateWinRate(rollingStats.btst),
       totalTrades: rollingStats.overall.length,
+      dateRangeLabel,
       chartData: Object.entries(chartMap).map(([date, pnl]) => ({ 
         date: date.split('-').reverse().slice(0, 2).join('/'), 
         pnl 
@@ -172,17 +176,20 @@ const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-white mb-1 flex items-center"><TrendingUp size={24} className="mr-2 text-yellow-500" />Performance Analytics</h2>
-          <p className="text-slate-500 text-[10px] font-mono uppercase tracking-widest flex items-center"><Calendar className="mr-1.5 text-blue-500" size={12} /> Trailing 30-Day Statistical Engine</p>
+          <p className="text-blue-400 text-[10px] font-mono font-black uppercase tracking-widest flex items-center">
+            <Calendar className="mr-1.5 text-blue-500" size={12} /> 
+            {performance.dateRangeLabel}
+          </p>
         </div>
         <div className="flex items-center space-x-2 text-slate-400 text-[10px] bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
            <Filter size={12} className="text-blue-500" />
-           <span className="uppercase font-black tracking-tighter">Window: Last 30 Days</span>
+           <span className="uppercase font-black tracking-tighter">Metric Focus: Last 30 Days</span>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Row 1: 30-Day Surplus & Win Rate */}
-        <StatItem label="30-Day Surplus" value={formatCurrency(performance.rollingPnL)} isPositive={performance.rollingPnL >= 0} icon={HistoryIcon} highlight={true} subtext={`Realized P&L (Trailing)`} />
+        <StatItem label="30-Day Surplus" value={formatCurrency(performance.rollingPnL)} isPositive={performance.rollingPnL >= 0} icon={HistoryIcon} highlight={true} subtext={`Realized P&L (Rolling)`} />
         <StatItem label="Win Rate (30D)" value={`${performance.overallWinRate.toFixed(1)}%`} isPositive={performance.overallWinRate >= 65} icon={Award} subtext="Aggregated Unified Accuracy" />
         
         {/* Row 2: Stock P&L & Intraday Accuracy */}
@@ -201,7 +208,7 @@ const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
               <p className="text-[10px] text-slate-500 mt-1 uppercase font-bold tracking-tighter">14-Day Rolling Realization Curve</p>
             </div>
             <div className="text-right">
-                <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Dataset: {performance.totalTrades} Closed Trades</span>
+                <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Dataset: {performance.totalTrades} Sample Points</span>
             </div>
         </div>
         
