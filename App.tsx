@@ -9,7 +9,6 @@ import Admin from './pages/Admin';
 import BookedTrades from './pages/BookedTrades';
 import { User, WatchlistItem, TradeSignal, TradeStatus, LogEntry, ChatMessage } from './types';
 import { fetchSheetData, updateSheetData } from './services/googleSheetsService';
-// Added Activity to the imports below to fix the error on line 460
 import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen, Briefcase, ExternalLink, MessageCircle, ShieldAlert, AlertTriangle, ArrowRight, CheckCircle2, Activity } from 'lucide-react';
 
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; 
@@ -23,11 +22,11 @@ export type GranularHighlights = Record<string, Set<string>>;
 
 const ALERT_TRIGGER_KEYS: Array<keyof TradeSignal> = [
   'instrument', 'symbol', 'type', 'action', 'entryPrice', 
-  'stopLoss', 'targets', 'status', 'targetsHit', 'isBTST', 'trailingSL', 'cmp', 'comment'
+  'stopLoss', 'targets', 'status', 'targetsHit', 'isBTST', 'trailingSL', 'comment'
 ];
 
 const ALL_SIGNAL_KEYS: Array<keyof TradeSignal> = [
-  ...ALERT_TRIGGER_KEYS, 'pnlPoints', 'pnlRupees', 'quantity'
+  ...ALERT_TRIGGER_KEYS, 'quantity'
 ];
 
 const WhatsAppLogo = ({ size = 24 }: { size?: number }) => (
@@ -81,6 +80,10 @@ const App: React.FC = () => {
   const prevWatchlistRef = useRef<WatchlistItem[]>([]);
   const prevMessagesRef = useRef<ChatMessage[]>([]);
   const lastIntelIdRef = useRef<string | null>(null);
+
+  // DEAD SIGNALS: Mechanism to freeze a signal's state locally once it hits a closed status.
+  // This prevents resurrection if the sheet formula reverts.
+  const deadSignalsRef = useRef<Map<string, TradeSignal>>(new Map());
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const activeOscillatorRef = useRef<OscillatorNode | null>(null);
@@ -175,7 +178,6 @@ const App: React.FC = () => {
       if (ctx.state === 'suspended') ctx.resume();
       const now = ctx.currentTime;
       
-      // Play exactly 3 beeps with clear separation
       const delays = [0, 0.6, 1.2];
       delays.forEach((delay) => {
         const osc = ctx.createOscillator();
@@ -212,20 +214,17 @@ const App: React.FC = () => {
       osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
       const now = ctx.currentTime;
       
-      // Beep 1
       gain.gain.setValueAtTime(0, now);
       gain.gain.linearRampToValueAtTime(0.15, now + 0.1); 
       gain.gain.setValueAtTime(0.15, now + 1.9);
       gain.gain.linearRampToValueAtTime(0, now + 2.0); 
       
-      // Beep 2
       const secondStart = now + 5.0;
       gain.gain.setValueAtTime(0, secondStart);
       gain.gain.linearRampToValueAtTime(0.15, secondStart + 0.1); 
       gain.gain.setValueAtTime(0.15, secondStart + 1.9);
       gain.gain.linearRampToValueAtTime(0, secondStart + 2.0); 
 
-      // Beep 3
       const thirdStart = now + 10.0;
       gain.gain.setValueAtTime(0, thirdStart);
       gain.gain.linearRampToValueAtTime(0.15, thirdStart + 0.1); 
@@ -264,6 +263,22 @@ const App: React.FC = () => {
         const now = Date.now();
         const expirationTime = now + MAJOR_ALERT_DURATION;
 
+        // Process Dead Signals logic to ignore resurrections
+        const reconciledSignals = data.signals.map(s => {
+          const isClosed = s.status === TradeStatus.EXITED || s.status === TradeStatus.STOPPED || s.status === TradeStatus.ALL_TARGET;
+          
+          if (deadSignalsRef.current.has(s.id)) {
+            // Enforce frozen dead state
+            return deadSignalsRef.current.get(s.id)!;
+          }
+          
+          if (isClosed) {
+            // Add to dead signals if not already there
+            deadSignalsRef.current.set(s.id, s);
+          }
+          return s;
+        });
+
         setActiveMajorAlerts(prevMajor => {
           const nextMajor = { ...prevMajor };
           setActiveWatchlistAlerts(prevWatch => {
@@ -271,7 +286,7 @@ const App: React.FC = () => {
             setGranularHighlights(prevHighs => {
               const nextHighs = { ...prevHighs };
 
-              data.signals.forEach(s => {
+              reconciledSignals.forEach(s => {
                 const sid = s.id;
                 const old = prevSignalsRef.current.find(o => o.id === sid);
                 const diff = new Set<string>();
@@ -351,10 +366,10 @@ const App: React.FC = () => {
         }
 
         setLastSyncTime(new Date().toLocaleTimeString('en-IN'));
-        prevSignalsRef.current = [...data.signals];
+        prevSignalsRef.current = [...reconciledSignals];
         prevWatchlistRef.current = [...data.watchlist];
         prevMessagesRef.current = [...data.messages];
-        setSignals([...data.signals]);
+        setSignals([...reconciledSignals]);
         setHistorySignals([...(data.history || [])]);
         setWatchlist([...data.watchlist]);
         setUsers([...data.users]);
@@ -372,6 +387,11 @@ const App: React.FC = () => {
   const handleSignalUpdate = useCallback(async (updated: TradeSignal): Promise<boolean> => {
     const success = await updateSheetData('signals', 'UPDATE_SIGNAL', updated, updated.id);
     if (success) {
+      // If we manually close it, ensure it's added to dead signals immediately
+      const isClosed = updated.status === TradeStatus.EXITED || updated.status === TradeStatus.STOPPED || updated.status === TradeStatus.ALL_TARGET;
+      if (isClosed) {
+        deadSignalsRef.current.set(updated.id, updated);
+      }
       await sync(false);
       return true;
     }
@@ -559,7 +579,7 @@ const App: React.FC = () => {
       {page === 'stats' && <Stats signals={signals} historySignals={historySignals} />}
       {page === 'rules' && <Rules />}
       {page === 'about' && <About />}
-      {user?.isAdmin && page === 'admin' && <Admin watchlist={watchlist} onUpdateWatchlist={() => {}} signals={signals} onUpdateSignals={() => {}} users={users} onUpdateUsers={() => {}} logs={logs} messages={messages} onNavigate={setPage} onHardSync={() => sync(true)} />}
+      {user?.isAdmin && page === 'admin' && <Admin watchlist={watchlist} onUpdateWatchlist={() => {}} signals={signals} onUpdateSignals={() => {}} users={users} onUpdateUsers={() => {}} logs={logs} messages={messages} onNavigate={setPage} onHardSync={() => { deadSignalsRef.current.clear(); return sync(true); }} />}
       <div className="md:hidden fixed bottom-4 left-4 right-4 z-[100] bg-slate-900/90 backdrop-blur-xl border border-slate-800 px-6 py-4 flex justify-around items-center rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
         <button onClick={() => setPage('dashboard')} className={`flex flex-col items-center space-y-1 transition-all ${page === 'dashboard' ? 'text-blue-500' : 'text-slate-500'}`}>
           <Radio size={24} strokeWidth={page === 'dashboard' ? 3 : 2} />

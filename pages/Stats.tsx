@@ -3,12 +3,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { TradeSignal, TradeStatus } from '../types';
 import { TrendingUp, Activity, BarChart3, Filter, Award, Clock, Layers, Briefcase, History as HistoryIcon, Zap, Calendar } from 'lucide-react';
 
-interface StatsProps {
-  signals?: (TradeSignal & { sheetIndex?: number })[];
-  historySignals?: TradeSignal[];
-}
-
-const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
+// Using any for props to avoid strictly typed Recharts TooltipProps issues in varied environments
+const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const pnl = payload[0].value || 0;
     const color = pnl >= 0 ? '#10b981' : '#f43f5e';
@@ -26,7 +22,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
   return null;
 };
 
-const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
+const Stats: React.FC<{ signals?: (TradeSignal & { sheetIndex?: number })[]; historySignals?: TradeSignal[] }> = ({ signals = [], historySignals = [] }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [chartWidth, setChartWidth] = useState<number | string>('100%');
   const [isReady, setIsReady] = useState(false);
@@ -176,7 +172,7 @@ const Stats: React.FC<StatsProps> = ({ signals = [], historySignals = [] }) => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-white mb-1 flex items-center"><TrendingUp size={24} className="mr-2 text-yellow-500" />Performance Analytics</h2>
-          <p className="text-blue-400 text-[10px] font-mono font-black uppercase tracking-widest flex items-center">
+          <p className="text-blue-500 text-[10px] font-mono font-black uppercase tracking-widest flex items-center">
             <Calendar className="mr-1.5 text-blue-500" size={12} /> 
             {performance.dateRangeLabel}
           </p>
