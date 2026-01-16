@@ -136,17 +136,19 @@ export const fetchSheetData = async (retries = 2): Promise<SheetData | null> => 
         lastPassword: String(getVal(u, 'lastPassword') || '').trim(),
         deviceId: String(getVal(u, 'deviceId') || '').trim() || null
       })),
-      logs: (data.logs || []).map((l: any) => ({
-        timestamp: getVal(l, 'timestamp') || new Date().toISOString(),
-        user: String(getVal(l, 'user') || 'System'),
-        action: String(getVal(l, 'action') || 'N/A'),
-        details: String(getVal(l, 'details') || ''),
-        type: (String(getVal(l, 'type') || 'SYSTEM')).toUpperCase() as any
-      })),
+      logs: (data.logs || []).map((l: any) => {
+        const detailsVal = getVal(l, 'details') || getVal(l, 'detail') || '';
+        return {
+          timestamp: getVal(l, 'timestamp') || new Date().toISOString(),
+          user: String(getVal(l, 'user') || 'System'),
+          action: String(getVal(l, 'action') || 'N/A'),
+          details: typeof detailsVal === 'object' ? JSON.stringify(detailsVal) : String(detailsVal),
+          type: (String(getVal(l, 'type') || 'SYSTEM')).toUpperCase() as any
+        };
+      }),
       messages: (data.messages || []).map((m: any) => {
         const text = String(getVal(m, 'text') || '').trim();
         const timestamp = String(getVal(m, 'timestamp') || '').trim();
-        // Use deterministic ID if sheet doesn't provide one to avoid duplicate alerts on polling
         const id = String(getVal(m, 'id') || '').trim() || 
                    `msg-${text.slice(0, 10)}-${timestamp}`.replace(/\s+/g, '-');
         
@@ -168,10 +170,8 @@ export const fetchSheetData = async (retries = 2): Promise<SheetData | null> => 
 export const updateSheetData = async (target: 'signals' | 'history' | 'watchlist' | 'users' | 'logs' | 'messages', action: string, payload: any, id?: string) => {
   if (!SCRIPT_URL) return false;
   try {
-    // Clone and sanitize payload for Google Sheets
     const cleanPayload = { ...payload };
     
-    // Ensure targets is a string before sending, using comma + space as requested
     if (cleanPayload.targets && Array.isArray(cleanPayload.targets)) {
       cleanPayload.targets = cleanPayload.targets.join(', ');
     }
