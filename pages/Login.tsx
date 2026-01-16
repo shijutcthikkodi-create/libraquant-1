@@ -119,6 +119,15 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         }
     }
 
+    // CAPTURE EVERY LOGIN: Log this successful session start to the Google Sheet
+    await updateSheetData('logs', 'ADD', {
+      timestamp: new Date().toISOString(),
+      user: sheetUser.name,
+      action: 'LOGIN_SUCCESS',
+      details: `Session started on hardware: ${browserDeviceId}`,
+      type: 'SECURITY'
+    });
+
     onLogin({
         id: sheetUser.id,
         phoneNumber: sheetUser.phoneNumber || '',

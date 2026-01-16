@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -214,22 +215,18 @@ const App: React.FC = () => {
       osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
       const now = ctx.currentTime;
       
+      // First beep
       gain.gain.setValueAtTime(0, now);
       gain.gain.linearRampToValueAtTime(0.15, now + 0.1); 
       gain.gain.setValueAtTime(0.15, now + 1.9);
       gain.gain.linearRampToValueAtTime(0, now + 2.0); 
       
+      // Second beep
       const secondStart = now + 5.0;
       gain.gain.setValueAtTime(0, secondStart);
       gain.gain.linearRampToValueAtTime(0.15, secondStart + 0.1); 
       gain.gain.setValueAtTime(0.15, secondStart + 1.9);
       gain.gain.linearRampToValueAtTime(0, secondStart + 2.0); 
-
-      const thirdStart = now + 10.0;
-      gain.gain.setValueAtTime(0, thirdStart);
-      gain.gain.linearRampToValueAtTime(0.15, thirdStart + 0.1); 
-      gain.gain.setValueAtTime(0.15, thirdStart + 1.9);
-      gain.gain.linearRampToValueAtTime(0, thirdStart + 2.0); 
       
       osc.connect(gain);
       gain.connect(ctx.destination);
