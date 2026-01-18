@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import SignalCard from '../components/SignalCard';
 import { Clock, Zap, Activity, ShieldCheck, Send, Timer, ArrowRight, List, TrendingUp, TrendingDown, Target, MessageSquareCode, Radio as RadioIcon } from 'lucide-react';
@@ -80,7 +81,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         <div>
           <h2 className="text-2xl font-bold text-white mb-1 flex items-center">
             <Activity size={24} className="mr-2 text-emerald-500" />
-            Live Trading Floor
+            Live Analysis Feed
           </h2>
           <p className="text-slate-400 text-sm font-mono tracking-tighter italic">Institutional Terminal Active</p>
         </div>
@@ -219,7 +220,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               {sortedSignals.length === 0 ? (
                   <div className="text-center py-20 bg-slate-900/50 border border-dashed border-slate-800 rounded-3xl">
                       <Zap size={40} className="mx-auto text-slate-800 mb-4" />
-                      <p className="text-slate-500 font-bold uppercase tracking-widest text-sm italic">Scanning terminal Truth...</p>
+                      <p className="text-slate-500 font-black uppercase tracking-widest text-sm italic">Scanning terminal Truth...</p>
                   </div>
               ) : (
                   <div className="space-y-6">

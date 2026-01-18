@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -257,9 +258,11 @@ const App: React.FC = () => {
         const now = Date.now();
         const expirationTime = now + MAJOR_ALERT_DURATION;
 
+        // Reconcile signals: Ensure closed signals stay cached for smooth UI transitions
         const reconciledSignals = data.signals.map(s => {
           const isClosed = s.status === TradeStatus.EXITED || s.status === TradeStatus.STOPPED || s.status === TradeStatus.ALL_TARGET;
           if (deadSignalsRef.current.has(s.id)) {
+            // Keep the cached data but update the index if it changed
             return { ...deadSignalsRef.current.get(s.id)!, sheetIndex: s.sheetIndex };
           }
           if (isClosed) deadSignalsRef.current.set(s.id, s);
@@ -365,6 +368,7 @@ const App: React.FC = () => {
         setInsights([...(data.insights || [])]);
         setConnectionStatus('connected');
       } else {
+        // Fallback for null data (sync error)
         setConnectionStatus('error');
       }
     } catch (err) {
@@ -550,7 +554,7 @@ const App: React.FC = () => {
       <div className="md:hidden fixed bottom-4 left-4 right-4 z-[100] bg-slate-900/90 backdrop-blur-xl border border-slate-800 px-6 py-4 flex justify-around items-center rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
         <button onClick={() => setPage('dashboard')} className={`flex flex-col items-center space-y-1 transition-all ${page === 'dashboard' ? 'text-blue-500' : 'text-slate-500'}`}>
           <Radio size={24} strokeWidth={page === 'dashboard' ? 3 : 2} />
-          <span className="text-[10px] font-bold uppercase tracking-tighter text-center">Live</span>
+          <span className="text-[10px] font-bold uppercase tracking-tighter text-center">Analysis</span>
         </button>
         <button onClick={() => setPage('insights')} className={`flex flex-col items-center space-y-1 transition-all ${page === 'insights' ? 'text-rose-500' : 'text-slate-500'}`}>
           <Flame size={24} strokeWidth={page === 'insights' ? 3 : 2} />
@@ -558,11 +562,11 @@ const App: React.FC = () => {
         </button>
         <button onClick={() => setPage('booked')} className={`flex flex-col items-center space-y-1 transition-all ${page === 'booked' ? 'text-emerald-500' : 'text-slate-500'}`}>
           <CheckCircle size={24} strokeWidth={page === 'booked' ? 3 : 2} />
-          <span className="text-[10px] font-bold uppercase tracking-tighter text-center">Booked</span>
+          <span className="text-[10px] font-bold uppercase tracking-tighter text-center">Outcomes</span>
         </button>
         <button onClick={() => setPage('stats')} className={`flex flex-col items-center space-y-1 transition-all ${page === 'stats' ? 'text-yellow-500' : 'text-slate-500'}`}>
           <BarChart2 size={24} strokeWidth={page === 'stats' ? 3 : 2} />
-          <span className="text-[10px] font-bold uppercase tracking-tighter text-center">Stats</span>
+          <span className="text-[10px] font-bold uppercase tracking-tighter text-center">Metrics</span>
         </button>
       </div>
     </Layout>

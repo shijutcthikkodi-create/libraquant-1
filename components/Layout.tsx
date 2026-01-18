@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { Menu, X, BarChart2, Radio, ShieldAlert, LogOut, FileText, User as UserIcon, Scale, Clock, CheckCircle, AlertCircle, EyeOff, ShieldCheck, List, TrendingUp, TrendingDown, BellRing, Zap, ArrowUpCircle, ExternalLink, Briefcase, BookOpen, Info, Flame } from 'lucide-react';
 import { User, WatchlistItem } from '../types';
@@ -259,10 +260,10 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
           </div>
         </div>
         <nav className="flex-1 px-4 overflow-y-auto no-scrollbar">
-          <NavItem page="dashboard" icon={Radio} label="Live Signals" />
+          <NavItem page="dashboard" icon={Radio} label="Live Analysis Feed" />
           <NavItem page="insights" icon={Flame} label="Market Insights" isNew />
-          <NavItem page="booked" icon={CheckCircle} label="Booked Trades" />
-          <NavItem page="stats" icon={BarChart2} label="P&L Analytics" />
+          <NavItem page="booked" icon={CheckCircle} label="Observed Outcomes" />
+          <NavItem page="stats" icon={BarChart2} label="Performance Metrics" />
           <NavItem page="rules" icon={ShieldAlert} label="Rules & Disclaimer" />
           <NavItem page="about" icon={Info} label="About Us" />
           

@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import SignalCard from '../components/SignalCard';
 import { History, Moon, Zap, Activity, BarChart3, TrendingUp, Layers, Calendar } from 'lucide-react';
@@ -205,7 +206,7 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
         <div>
            <h2 className="text-3xl font-black text-white tracking-tighter uppercase leading-none mb-1 flex items-center">
              <History size={32} className="mr-3 text-emerald-500" />
-             Trade History Ledger
+             Observed Outcomes
            </h2>
            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest font-mono italic">
              Session: {todayDateLabel}

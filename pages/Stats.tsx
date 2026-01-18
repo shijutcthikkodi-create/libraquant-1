@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useLayoutEffect, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, TooltipProps } from 'recharts';
 import { TradeSignal, TradeStatus } from '../types';
@@ -171,7 +172,7 @@ const Stats: React.FC<{ signals?: (TradeSignal & { sheetIndex?: number })[]; his
     <div className="space-y-6 animate-in fade-in duration-700">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-white mb-1 flex items-center"><TrendingUp size={24} className="mr-2 text-yellow-500" />Performance Analytics</h2>
+          <h2 className="text-2xl font-bold text-white mb-1 flex items-center"><TrendingUp size={24} className="mr-2 text-yellow-500" />Performance Metrics</h2>
           <p className="text-blue-500 text-[10px] font-mono font-black uppercase tracking-widest flex items-center">
             <Calendar className="mr-1.5 text-blue-500" size={12} /> 
             {performance.dateRangeLabel}
