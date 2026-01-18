@@ -1,4 +1,5 @@
 
+
 export enum TradeStatus {
   ACTIVE = 'ACTIVE',
   PARTIAL = 'PARTIAL BOOKED',
@@ -39,6 +40,18 @@ export interface TradeSignal {
   quantity?: number;
   cmp?: number;
   isBTST?: boolean;
+  sheetIndex?: number;
+}
+
+export interface InsightData {
+  type: 'TREND' | 'DOMINANCE' | 'FLOW';
+  symbol: string;
+  sentiment?: 'Bullish' | 'Bearish';
+  strength?: number;
+  category?: 'Scalp' | 'Intraday' | 'Short-term' | 'Long-term';
+  trend?: 'Bullish' | 'Bearish';
+  pattern?: 'Narrow' | 'Range';
+  phase?: 'Accumulation' | 'Distribution';
 }
 
 export interface ChatMessage {

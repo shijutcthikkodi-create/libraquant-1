@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -8,9 +7,10 @@ import Rules from './pages/Rules';
 import About from './pages/About';
 import Admin from './pages/Admin';
 import BookedTrades from './pages/BookedTrades';
-import { User, WatchlistItem, TradeSignal, TradeStatus, LogEntry, ChatMessage } from './types';
+import MarketInsights from './pages/MarketInsights';
+import { User, WatchlistItem, TradeSignal, TradeStatus, LogEntry, ChatMessage, InsightData } from './types';
 import { fetchSheetData, updateSheetData } from './services/googleSheetsService';
-import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen, Briefcase, ExternalLink, MessageCircle, ShieldAlert, AlertTriangle, ArrowRight, CheckCircle2, Activity } from 'lucide-react';
+import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen, Briefcase, ExternalLink, MessageCircle, ShieldAlert, AlertTriangle, ArrowRight, CheckCircle2, Activity, Flame } from 'lucide-react';
 
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; 
 const SESSION_KEY = 'libra_user_session';
@@ -67,6 +67,7 @@ const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [insights, setInsights] = useState<InsightData[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'error' | 'syncing'>('syncing');
   const [lastSyncTime, setLastSyncTime] = useState<string>('--:--:--');
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('libra_sound_enabled') === 'true');
@@ -82,8 +83,6 @@ const App: React.FC = () => {
   const prevMessagesRef = useRef<ChatMessage[]>([]);
   const lastIntelIdRef = useRef<string | null>(null);
 
-  // DEAD SIGNALS: Mechanism to freeze a signal's state locally once it hits a closed status.
-  // This prevents resurrection if the sheet formula reverts.
   const deadSignalsRef = useRef<Map<string, TradeSignal>>(new Map());
 
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -215,13 +214,11 @@ const App: React.FC = () => {
       osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
       const now = ctx.currentTime;
       
-      // First beep
       gain.gain.setValueAtTime(0, now);
       gain.gain.linearRampToValueAtTime(0.15, now + 0.1); 
       gain.gain.setValueAtTime(0.15, now + 1.9);
       gain.gain.linearRampToValueAtTime(0, now + 2.0); 
       
-      // Second beep
       const secondStart = now + 5.0;
       gain.gain.setValueAtTime(0, secondStart);
       gain.gain.linearRampToValueAtTime(0.15, secondStart + 0.1); 
@@ -260,19 +257,12 @@ const App: React.FC = () => {
         const now = Date.now();
         const expirationTime = now + MAJOR_ALERT_DURATION;
 
-        // Process Dead Signals logic to ignore resurrections
         const reconciledSignals = data.signals.map(s => {
           const isClosed = s.status === TradeStatus.EXITED || s.status === TradeStatus.STOPPED || s.status === TradeStatus.ALL_TARGET;
-          
           if (deadSignalsRef.current.has(s.id)) {
-            // Enforce frozen dead state
-            return deadSignalsRef.current.get(s.id)!;
+            return { ...deadSignalsRef.current.get(s.id)!, sheetIndex: s.sheetIndex };
           }
-          
-          if (isClosed) {
-            // Add to dead signals if not already there
-            deadSignalsRef.current.set(s.id, s);
-          }
+          if (isClosed) deadSignalsRef.current.set(s.id, s);
           return s;
         });
 
@@ -282,7 +272,6 @@ const App: React.FC = () => {
             const nextWatch = { ...prevWatch };
             setGranularHighlights(prevHighs => {
               const nextHighs = { ...prevHighs };
-
               reconciledSignals.forEach(s => {
                 const sid = s.id;
                 const old = prevSignalsRef.current.find(o => o.id === sid);
@@ -296,11 +285,11 @@ const App: React.FC = () => {
                   }
                 } else {
                   ALL_SIGNAL_KEYS.forEach(k => {
-                    const newVal = s[k];
-                    const oldVal = old[k];
+                    const newVal = s[k as keyof TradeSignal];
+                    const oldVal = old[k as keyof TradeSignal];
                     if (JSON.stringify(newVal) !== JSON.stringify(oldVal)) {
                       diff.add(k);
-                      if (ALERT_TRIGGER_KEYS.includes(k)) {
+                      if (ALERT_TRIGGER_KEYS.includes(k as keyof TradeSignal)) {
                          majorUpdateFound = signalChangeDetected = true;
                          if (k === 'status' && (s.status === TradeStatus.STOPPED || s.status === TradeStatus.EXITED || s.status === TradeStatus.ALL_TARGET)) {
                             isCriticalAlert = true;
@@ -312,7 +301,10 @@ const App: React.FC = () => {
 
                 if (majorUpdateFound) {
                   nextMajor[sid] = expirationTime;
-                  if (s.sheetIndex > topIndex) { topIndex = s.sheetIndex; targetSid = sid; }
+                  if (s.sheetIndex !== undefined && s.sheetIndex > topIndex) { 
+                    topIndex = s.sheetIndex; 
+                    targetSid = sid; 
+                  }
                   if (s.isBTST && (s.status === TradeStatus.ACTIVE || s.status === TradeStatus.PARTIAL)) isBTSTUpdate = true;
                 }
                 
@@ -326,7 +318,6 @@ const App: React.FC = () => {
                 const old = prevWatchlistRef.current.find(o => o.symbol === w.symbol);
                 const isNew = !old && prevWatchlistRef.current.length > 0;
                 const isPriceChanged = old && Number(w.price) !== Number(old.price);
-
                 if (!isInitial && (isNew || isPriceChanged)) {
                   watchChangeDetected = true;
                   nextWatch[w.symbol] = expirationTime;
@@ -343,7 +334,6 @@ const App: React.FC = () => {
         if (!isInitial && data.messages.length > 0) {
           const adminMessages = data.messages.filter(m => m.isAdminReply).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
           const latestAdminMsg = adminMessages[0];
-          
           if (latestAdminMsg && latestAdminMsg.id !== lastIntelIdRef.current) {
             intelChangeDetected = true;
             lastIntelIdRef.current = latestAdminMsg.id;
@@ -372,7 +362,10 @@ const App: React.FC = () => {
         setUsers([...data.users]);
         setLogs([...(data.logs || [])]);
         setMessages([...(data.messages || [])]);
+        setInsights([...(data.insights || [])]);
         setConnectionStatus('connected');
+      } else {
+        setConnectionStatus('error');
       }
     } catch (err) {
       setConnectionStatus('error');
@@ -384,11 +377,8 @@ const App: React.FC = () => {
   const handleSignalUpdate = useCallback(async (updated: TradeSignal): Promise<boolean> => {
     const success = await updateSheetData('signals', 'UPDATE_SIGNAL', updated, updated.id);
     if (success) {
-      // If we manually close it, ensure it's added to dead signals immediately
       const isClosed = updated.status === TradeStatus.EXITED || updated.status === TradeStatus.STOPPED || updated.status === TradeStatus.ALL_TARGET;
-      if (isClosed) {
-        deadSignalsRef.current.set(updated.id, updated);
-      }
+      if (isClosed) deadSignalsRef.current.set(updated.id, updated);
       await sync(false);
       return true;
     }
@@ -486,12 +476,6 @@ const App: React.FC = () => {
                         ))}
                     </div>
 
-                    <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50 mb-8">
-                        <p className="text-[10px] text-slate-500 font-bold leading-relaxed italic">
-                            Source: SEBI study dated January 25, 2023, on "Analysis of Profit and Loss of Individual Traders dealing in equity Futures and Options (F&O) Segment," based on FY 2021-22 data.
-                        </p>
-                    </div>
-
                     <button 
                         onClick={handleAcceptDisclosure}
                         className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-2xl transition-all shadow-xl shadow-blue-900/30 flex items-center justify-center text-xs uppercase tracking-[0.2em] group"
@@ -535,7 +519,7 @@ const App: React.FC = () => {
               <span className="text-[9px] text-slate-500 uppercase tracking-tighter leading-none mb-1">Terminal Link</span>
               <div className="flex items-center">
                  <div className={`w-1.5 h-1.5 rounded-full mr-1.5 ${connectionStatus === 'syncing' ? 'bg-blue-400 animate-pulse' : connectionStatus === 'error' ? 'bg-rose-500 animate-ping' : 'bg-emerald-500'}`}></div>
-                 <span className={`${connectionStatus === 'error' ? 'text-rose-400' : 'text-white'} font-mono`}>{lastSyncTime}</span>
+                 <span className={`${connectionStatus === 'error' ? 'text-rose-400' : 'text-white'} font-mono`}>{connectionStatus === 'error' ? 'RETRYING...' : lastSyncTime}</span>
               </div>
           </div>
           <button onClick={() => sync(true)} className="p-1.5 rounded-lg bg-slate-800 text-blue-400 border border-blue-500/20"><Database size={14} /></button>
@@ -543,18 +527,6 @@ const App: React.FC = () => {
         <button onClick={toggleSound} className={`p-4 rounded-full border shadow-2xl transition-all active:scale-90 ${soundEnabled ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400 shadow-cyan-500/10' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
           {soundEnabled ? <Volume2 size={32} /> : <VolumeX size={32} />}
         </button>
-        
-        <a 
-          href="https://oa.mynt.in/?ref=ZTN348" 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="bg-emerald-600/90 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg border border-emerald-400/30 shadow-lg transition-all active:scale-95 flex items-center space-x-1.5"
-          title="Open Demat Account"
-        >
-          <Briefcase size={12} />
-          <span className="text-[9px] font-black uppercase tracking-tight">Open Demat</span>
-          <ExternalLink size={8} className="opacity-70" />
-        </a>
       </div>
 
       <a 
@@ -565,22 +537,24 @@ const App: React.FC = () => {
         title="WhatsApp Support Group"
       >
         <WhatsAppLogo size={26} />
-        <span className="absolute -top-1 -right-1 flex h-3 w-3">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500 border border-slate-900"></span>
-        </span>
       </a>
 
       {page === 'dashboard' && <Dashboard watchlist={watchlist} signals={signals} messages={messages} user={user} granularHighlights={granularHighlights} activeMajorAlerts={activeMajorAlerts} activeWatchlistAlerts={activeWatchlistAlerts} activeIntelAlert={activeIntelAlert} onSignalUpdate={handleSignalUpdate} />}
+      {page === 'insights' && <MarketInsights insights={insights} />}
       {page === 'booked' && <BookedTrades signals={signals} historySignals={historySignals} user={user} granularHighlights={granularHighlights} onSignalUpdate={handleSignalUpdate} />}
       {page === 'stats' && <Stats signals={signals} historySignals={historySignals} />}
       {page === 'rules' && <Rules />}
       {page === 'about' && <About />}
       {user?.isAdmin && page === 'admin' && <Admin watchlist={watchlist} onUpdateWatchlist={() => {}} signals={signals} onUpdateSignals={() => {}} users={users} onUpdateUsers={() => {}} logs={logs} messages={messages} onNavigate={setPage} onHardSync={() => { deadSignalsRef.current.clear(); return sync(true); }} />}
+      
       <div className="md:hidden fixed bottom-4 left-4 right-4 z-[100] bg-slate-900/90 backdrop-blur-xl border border-slate-800 px-6 py-4 flex justify-around items-center rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
         <button onClick={() => setPage('dashboard')} className={`flex flex-col items-center space-y-1 transition-all ${page === 'dashboard' ? 'text-blue-500' : 'text-slate-500'}`}>
           <Radio size={24} strokeWidth={page === 'dashboard' ? 3 : 2} />
           <span className="text-[10px] font-bold uppercase tracking-tighter text-center">Live</span>
+        </button>
+        <button onClick={() => setPage('insights')} className={`flex flex-col items-center space-y-1 transition-all ${page === 'insights' ? 'text-rose-500' : 'text-slate-500'}`}>
+          <Flame size={24} strokeWidth={page === 'insights' ? 3 : 2} />
+          <span className="text-[10px] font-bold uppercase tracking-tighter text-center">Alpha</span>
         </button>
         <button onClick={() => setPage('booked')} className={`flex flex-col items-center space-y-1 transition-all ${page === 'booked' ? 'text-emerald-500' : 'text-slate-500'}`}>
           <CheckCircle size={24} strokeWidth={page === 'booked' ? 3 : 2} />
@@ -589,10 +563,6 @@ const App: React.FC = () => {
         <button onClick={() => setPage('stats')} className={`flex flex-col items-center space-y-1 transition-all ${page === 'stats' ? 'text-yellow-500' : 'text-slate-500'}`}>
           <BarChart2 size={24} strokeWidth={page === 'stats' ? 3 : 2} />
           <span className="text-[10px] font-bold uppercase tracking-tighter text-center">Stats</span>
-        </button>
-        <button onClick={() => setPage('rules')} className={`flex flex-col items-center space-y-1 transition-all ${page === 'rules' ? 'text-purple-500' : 'text-slate-500'}`}>
-          <BookOpen size={24} strokeWidth={page === 'rules' ? 3 : 2} />
-          <span className="text-[10px] font-bold uppercase tracking-tighter text-center">Rules</span>
         </button>
       </div>
     </Layout>

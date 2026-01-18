@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Menu, X, BarChart2, Radio, ShieldAlert, LogOut, FileText, User as UserIcon, Scale, Clock, CheckCircle, AlertCircle, EyeOff, ShieldCheck, List, TrendingUp, TrendingDown, BellRing, Zap, ArrowUpCircle, ExternalLink, Briefcase, BookOpen, Info } from 'lucide-react';
+import { Menu, X, BarChart2, Radio, ShieldAlert, LogOut, FileText, User as UserIcon, Scale, Clock, CheckCircle, AlertCircle, EyeOff, ShieldCheck, List, TrendingUp, TrendingDown, BellRing, Zap, ArrowUpCircle, ExternalLink, Briefcase, BookOpen, Info, Flame } from 'lucide-react';
 import { User, WatchlistItem } from '../types';
 import { FOOTER_TEXT, BRANDING_TEXT } from '../constants';
 
@@ -178,15 +178,18 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
 
   const hasGlobalWatchAlerts = Object.keys(activeWatchlistAlerts).length > 0;
 
-  const NavItem = ({ page, icon: Icon, label }: { page: string; icon: any; label: string }) => (
+  const NavItem = ({ page, icon: Icon, label, isNew }: { page: string; icon: any; label: string; isNew?: boolean }) => (
     <button
       onClick={() => { onNavigate(page); setIsSidebarOpen(false); }}
-      className={`flex items-center w-full px-4 py-3 mb-2 rounded-lg transition-colors ${
+      className={`flex items-center w-full px-4 py-3 mb-2 rounded-lg transition-colors relative group ${
         currentPage === page ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
       }`}
     >
-      <Icon size={20} className="mr-3" />
-      <span className="font-medium">{label}</span>
+      <Icon size={20} className="mr-3 shrink-0" />
+      <span className="font-medium whitespace-nowrap">{label}</span>
+      {isNew && (
+        <span className="ml-auto px-1.5 py-0.5 rounded bg-rose-500 text-[8px] font-black text-white uppercase animate-pulse">New</span>
+      )}
     </button>
   );
 
@@ -255,14 +258,15 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
             <p className="text-[10px] text-purple-400 font-mono uppercase tracking-widest">Secure Terminal</p>
           </div>
         </div>
-        <nav className="flex-1 px-4 overflow-y-auto">
+        <nav className="flex-1 px-4 overflow-y-auto no-scrollbar">
           <NavItem page="dashboard" icon={Radio} label="Live Signals" />
+          <NavItem page="insights" icon={Flame} label="Market Insights" isNew />
           <NavItem page="booked" icon={CheckCircle} label="Booked Trades" />
           <NavItem page="stats" icon={BarChart2} label="P&L Analytics" />
           <NavItem page="rules" icon={ShieldAlert} label="Rules & Disclaimer" />
           <NavItem page="about" icon={Info} label="About Us" />
           
-          {/* DEMAT OPEN SECTION - REDESIGNED */}
+          {/* DEMAT OPEN SECTION */}
           <div className="mt-6 px-1">
               <div className="relative overflow-hidden bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 rounded-2xl p-4 shadow-xl group/demat">
                   <div className="absolute top-0 right-0 p-2 opacity-10 group-hover/demat:opacity-20 transition-opacity">
@@ -292,28 +296,13 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
                            <ExternalLink size={12} className="text-white" />
                         </div>
                       </a>
-
-                      <div className="mt-3 flex items-center space-x-2 opacity-60">
-                         <Zap size={10} className="text-yellow-500" />
-                         <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">Verified Institutional Link</span>
-                      </div>
                   </div>
-                  
-                  {/* Subtle decorative glow */}
-                  <div className="absolute -bottom-8 -right-8 w-16 h-16 bg-emerald-500/10 blur-2xl rounded-full"></div>
               </div>
           </div>
 
           {user?.isAdmin && <div className="mt-4 pt-4 border-t border-slate-800/50"><NavItem page="admin" icon={FileText} label="Admin Panel" /></div>}
         </nav>
         
-        {hasGlobalWatchAlerts && (
-          <div className="px-6 py-2 bg-blue-600/10 border-t border-blue-500/20 flex items-center space-x-3 animate-pulse">
-            <Zap size={14} className="text-blue-400" />
-            <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Market Watch Update</span>
-          </div>
-        )}
-
         <div className="p-4 border-t border-slate-800">
           <div className="flex items-center mb-4 px-2">
             <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-slate-300 mr-3"><UserIcon size={16} /></div>

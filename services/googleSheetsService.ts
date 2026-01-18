@@ -1,6 +1,8 @@
-import { TradeSignal, WatchlistItem, User, TradeStatus, LogEntry, ChatMessage } from '../types';
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwvKlkhm4P2wj0t5ePFGEVzCFOhL6k96qC4dc0OAId1NLCUl_sphIo6fupHOX3d6Coz/exec';
+import { TradeSignal, WatchlistItem, User, TradeStatus, LogEntry, ChatMessage, InsightData } from '../types';
+
+// Sanitize the URL to ensure no hidden whitespace
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyERhGFKmElUCIlBSrApSnQ1QaUH359KeLtatIu0GQ6HNmJm7iYz4Wzkon0fTdkpIXY/exec'.trim();
 
 export interface SheetData {
   signals: (TradeSignal & { sheetIndex: number })[];
@@ -9,8 +11,12 @@ export interface SheetData {
   users: User[];
   logs: LogEntry[];
   messages: ChatMessage[];
+  insights: InsightData[];
 }
 
+/**
+ * Enhanced JSON parser to handle Apps Script responses which might be wrapped in HTML or whitespace.
+ */
 const robustParseJson = (text: string) => {
   const trimmed = text.trim();
   try {
@@ -21,10 +27,13 @@ const robustParseJson = (text: string) => {
       try {
         return JSON.parse(jsonMatch[0]);
       } catch (innerError) {
-        throw new Error("Invalid JSON structure.");
+        throw new Error("JSON structure corrupted.");
       }
     }
-    throw new Error("Invalid response format.");
+    if (trimmed.toLowerCase().includes('<!doctype html>')) {
+      throw new Error("Script returned HTML. Ensure GAS deployment is 'Anyone' and 'Web App'.");
+    }
+    throw new Error("Invalid response format from terminal.");
   }
 };
 
@@ -103,14 +112,24 @@ const parseSignalRow = (s: any, index: number, tabName: string): TradeSignal | n
   };
 };
 
-export const fetchSheetData = async (retries = 2): Promise<SheetData | null> => {
+/**
+ * Fetches sheet data with Exponential Backoff retry strategy.
+ * Uses a clean GET request to avoid CORS preflight OPTIONS triggers.
+ */
+export const fetchSheetData = async (retries = 3): Promise<SheetData | null> => {
   if (!SCRIPT_URL) return null;
+  
   try {
-    const v = Date.now();
-    const response = await fetch(`${SCRIPT_URL}?v=${v}`, { method: 'GET', mode: 'cors' });
-    if (!response.ok) throw new Error(`HTTP_${response.status}`);
+    const response = await fetch(`${SCRIPT_URL}?v=${Date.now()}`, {
+      method: 'GET',
+      mode: 'cors',
+      redirect: 'follow'
+    });
+    
+    if (!response.ok) throw new Error(`Terminal access error: ${response.status}`);
 
-    const data = robustParseJson(await response.text());
+    const responseText = await response.text();
+    const data = robustParseJson(responseText);
     
     return { 
       signals: (data.signals || [])
@@ -159,23 +178,42 @@ export const fetchSheetData = async (retries = 2): Promise<SheetData | null> => 
           timestamp: timestamp || new Date().toISOString(),
           isAdminReply: isTrue(getVal(m, 'isAdminReply'))
         };
-      })
+      }),
+      insights: (data.insights || []).map((ins: any) => ({
+        type: String(getVal(ins, 'type') || '').toUpperCase() as any,
+        symbol: String(getVal(ins, 'symbol') || '').trim(),
+        sentiment: getVal(ins, 'sentiment') as any,
+        strength: getNum(ins, 'strength'),
+        category: getVal(ins, 'category') as any,
+        trend: getVal(ins, 'trend') as any,
+        pattern: getVal(ins, 'pattern') as any,
+        phase: getVal(ins, 'phase') as any
+      }))
     };
   } catch (error) {
-    if (retries > 0) return fetchSheetData(retries - 1);
+    console.warn(`Sync Warning (${retries} left): ${error instanceof Error ? error.message : String(error)}`);
+    if (retries > 0) {
+      // Exponential Backoff: 1s, 2s, 4s...
+      const delay = Math.pow(2, (3 - retries)) * 1000;
+      await new Promise(r => setTimeout(r, delay));
+      return fetchSheetData(retries - 1);
+    }
     throw error;
   }
 };
 
-export const updateSheetData = async (target: 'signals' | 'history' | 'watchlist' | 'users' | 'logs' | 'messages', action: string, payload: any, id?: string) => {
+/**
+ * Updates sheet data using POST with 'no-cors' to avoid preflight issues.
+ */
+export const updateSheetData = async (target: string, action: string, payload: any, id?: string) => {
   if (!SCRIPT_URL) return false;
   try {
     const cleanPayload = { ...payload };
-    
     if (cleanPayload.targets && Array.isArray(cleanPayload.targets)) {
       cleanPayload.targets = cleanPayload.targets.join(', ');
     }
 
+    // Using text/plain as the Content-Type to avoid CORS preflight in Apps Script
     await fetch(SCRIPT_URL, {
       method: 'POST',
       mode: 'no-cors', 
@@ -184,6 +222,7 @@ export const updateSheetData = async (target: 'signals' | 'history' | 'watchlist
     });
     return true; 
   } catch (error) { 
+    console.error("Transmission Error:", error);
     return false; 
   }
 };
