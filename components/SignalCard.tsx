@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { ArrowUpRight, ArrowDownRight, Target, Cpu, Edit2, Check, X, TrendingUp, TrendingDown, Clock, ShieldAlert, Zap, AlertTriangle, Trophy, Loader2, History, Briefcase, Activity, Moon, Trash2, RefreshCw } from 'lucide-react';
 import { TradeSignal, TradeStatus, OptionType, User } from '../types';
@@ -21,7 +22,7 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
   const [isSavingTrail, setIsSavingTrail] = useState(false);
   const [trailValue, setTrailValue] = useState<string>(signal.trailingSL != null ? Number(signal.trailingSL).toFixed(2) : '');
   const [displayTrail, setDisplayTrail] = useState<number | null | undefined>(signal.trailingSL);
-
+  
   useEffect(() => {
     if (!isEditingTrail) {
       setDisplayTrail(signal.trailingSL);
@@ -38,8 +39,6 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
   const isTSLHit = isExited && !isAllTarget && (signal.comment?.toUpperCase().includes('TSL') || (signal.status === TradeStatus.EXITED && (Number(signal.pnlPoints || 0)) > 0 && signal.comment?.toUpperCase().includes('TRAILING')));
   const canEdit = user.isAdmin && !isExited;
 
-  // LOCK CMP Logic: If SL hit, lock to SL price. If All Target, lock to last target. Otherwise show current CMP.
-  // This is now enforced by App.tsx's deadSignals mechanism too.
   let currentCMP = isNaN(Number(signal.cmp)) || signal.cmp === undefined || signal.cmp === null ? Number(signal.entryPrice || 0) : Number(signal.cmp);
   
   if (isSLHit) {
@@ -125,7 +124,7 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
   };
 
   const stamp = getStampContent();
-  const givenTime = new Date(signal.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const observedAtTime = new Date(signal.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   
   return (
     <div className={`relative bg-slate-900 border rounded-xl overflow-hidden transition-all duration-500 
@@ -163,15 +162,15 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
           <div className={`p-2 rounded-lg ${isBuy ? 'bg-emerald-900/30 text-emerald-400' : 'bg-rose-900/30 text-rose-400'}`}>
             {isBuy ? <ArrowUpRight size={24} /> : <ArrowDownRight size={24} />}
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="flex items-center space-x-2 mb-0.5">
-                <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${isBuy ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500 text-white'}`}>
-                    {signal.action}
+                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tight ${isBuy ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500 text-white'}`}>
+                    {isBuy ? 'POTENTIAL UP' : 'POTENTIAL DOWN'}
                 </span>
-                <h3 className="text-xl font-bold text-white tracking-tight font-mono">{signal.instrument}</h3>
+                <h3 className="text-xl font-bold text-white tracking-tight font-mono truncate">{signal.instrument}</h3>
                 {isBTST && isActive && (
-                  <div className={`flex items-center px-2 py-0.5 rounded bg-amber-500 text-slate-950 text-[9px] font-black shadow-lg animate-pulse`}>
-                    <Moon size={10} className="mr-1" /> BTST
+                  <div className={`flex items-center px-2 py-0.5 rounded bg-amber-500 text-slate-950 text-[9px] font-black shadow-lg animate-pulse whitespace-nowrap`}>
+                    <Moon size={10} className="mr-1" /> OVERNIGHT
                   </div>
                 )}
             </div>
@@ -208,8 +207,8 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
 
       <div className="grid grid-cols-3 gap-px bg-slate-800 border-y border-slate-800">
         <div className={`bg-slate-900 p-4 ${!isExited && (highlights?.has('entryPrice') || highlights?.has('quantity')) ? 'animate-box-blink' : ''}`}>
-            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1 flex items-center">Entry</p>
-            <p className="text-xl font-mono font-bold text-white">₹{entryPrice.toFixed(2)}</p>
+            <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest mb-1 flex items-center leading-none">Base Level</p>
+            <p className="text-xl font-mono font-bold text-white leading-tight">₹{entryPrice.toFixed(2)}</p>
             {signal.quantity ? (
               <div className="mt-1 flex items-center text-[10px] font-bold text-blue-400 uppercase tracking-tighter">
                 <Briefcase size={10} className="mr-1" /> Size: {signal.quantity}
@@ -218,8 +217,8 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
         </div>
         
         <div className={`p-4 flex flex-col transition-colors duration-500 ${isSLHit ? 'bg-rose-950/20' : 'bg-slate-900'} ${!isExited && highlights?.has('stopLoss') ? 'animate-box-blink' : ''}`}>
-            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">Stop Loss</p>
-            <p className={`text-xl font-mono font-bold mb-3 ${isSLHit ? 'text-rose-500' : 'text-rose-400'}`}>
+            <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest mb-1 leading-none">Protection</p>
+            <p className={`text-xl font-mono font-bold mb-3 leading-tight ${isSLHit ? 'text-rose-500' : 'text-rose-400'}`}>
               ₹{Number(signal.stopLoss || 0).toFixed(2)}
             </p>
             <div className={`mt-auto pt-2 border-t border-slate-800/80 ${!isExited && highlights?.has('trailingSL') ? 'animate-box-blink bg-blue-500/10' : ''}`}>
@@ -235,7 +234,7 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
                     <div className={`flex items-center justify-between rounded -mx-1 px-1 py-1 transition-colors group/trail ${canEdit ? 'cursor-pointer hover:bg-slate-800/50' : 'opacity-70'}`} onClick={() => canEdit && setIsEditingTrail(true)}>
                          <div className="flex items-center space-x-1.5">
                             <TrendingUp size={10} className={isTSLHit ? 'text-rose-500' : 'text-yellow-600'} />
-                            <span className="text-[10px] text-slate-500 uppercase font-bold">Trail</span>
+                            <span className="text-[9px] text-slate-500 uppercase font-black tracking-tighter whitespace-nowrap">Risk Guard</span>
                          </div>
                          <div className="flex items-center space-x-2">
                             <span className={`text-xs font-mono font-bold ${isTSLHit ? 'text-rose-500' : 'text-yellow-500'}`}>
@@ -250,8 +249,8 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
 
         <div className={`p-4 border-l border-slate-800 transition-all duration-700 bg-slate-900`}>
             <div className="flex items-center justify-between mb-1.5">
-                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest flex items-center">
-                  <Activity size={10} className={`mr-1 ${isBTST ? 'text-amber-500' : 'text-blue-500'}`} /> {isExited ? 'EXIT PRICE' : 'CMP'}
+                <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest flex items-center leading-none">
+                  <Activity size={10} className={`mr-1 ${isBTST ? 'text-amber-500' : 'text-blue-500'}`} /> {isExited ? 'EXIT' : 'CMP'}
                 </p>
                 {isActive && (
                   <div className={`flex items-center space-x-1 ${isBTST ? 'bg-amber-500/10' : 'bg-emerald-500/10'} border border-current/20 px-1 py-0.5 rounded animate-pulse`}>
@@ -260,7 +259,7 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
                   </div>
                 )}
             </div>
-            <p className={`text-2xl font-mono font-black tracking-tighter ${cmpProfit && isActive ? 'text-emerald-400' : cmpLoss && isActive ? 'text-rose-400' : 'text-white'}`}>
+            <p className={`text-2xl font-mono font-black tracking-tighter leading-tight ${cmpProfit && isActive ? 'text-emerald-400' : cmpLoss && isActive ? 'text-rose-400' : 'text-white'}`}>
               ₹{currentCMP.toFixed(2)}
             </p>
         </div>
@@ -291,7 +290,7 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
         <div className="flex items-center justify-between mb-3">
             <div className="flex items-center space-x-2">
                 <Target size={14} className="text-blue-500" />
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Targets</span>
+                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Projected Resistance Level</span>
             </div>
         </div>
         <div className={`grid grid-cols-3 gap-2 ${!isExited && (highlights?.has('targetsHit') || highlights?.has('blast')) ? 'animate-box-blink' : ''}`}>
@@ -299,7 +298,7 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
                 const isHit = isAllTarget || (signal.targetsHit || 0) > idx;
                 return (
                   <div key={idx} className={`rounded px-2 py-2 text-center border transition-all duration-700 ${getTargetStyle(idx)}`}>
-                      <p className={`text-[10px] font-black uppercase mb-0.5 ${isHit ? 'text-white' : 'text-slate-400'}`}>T{idx + 1}</p>
+                      <p className={`text-[9px] font-black uppercase mb-0.5 ${isHit ? 'text-white' : 'text-slate-400'}`}>LVL {idx + 1}</p>
                       <p className={`text-sm font-mono font-black ${isHit && isActive ? 'animate-pulse' : ''}`}>{Number(t).toFixed(1)}</p>
                       {isHit && <Check size={10} strokeWidth={3} className="mx-auto mt-1" />}
                   </div>
@@ -316,16 +315,17 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
         <div className="mt-4 border-t border-slate-800 pt-3 flex justify-between items-center">
             <div className="flex items-center space-x-6">
                 <div className="flex flex-col">
-                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1 leading-none opacity-50">Given At</span>
+                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1 leading-none opacity-50">Observed At</span>
                   <div className="flex items-center text-[10px] text-slate-400 font-mono">
                       <Clock size={10} className="mr-1" />
-                      {givenTime}
+                      {observedAtTime}
                   </div>
                 </div>
+
                 {signal.lastTradedTimestamp && signal.lastTradedTimestamp !== signal.timestamp && (
                   <div className="flex flex-col border-l border-slate-800 pl-4">
-                    <span className="text-[8px] font-black text-blue-500 uppercase tracking-widest mb-1 leading-none opacity-50">Modified</span>
-                    <div className="flex items-center text-[10px] text-blue-400 font-mono">
+                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1 leading-none opacity-50">Modified</span>
+                    <div className="flex items-center text-[10px] text-slate-400 font-mono">
                         <RefreshCw size={10} className="mr-1" />
                         {new Date(signal.lastTradedTimestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                     </div>
