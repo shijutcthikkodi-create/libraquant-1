@@ -1,7 +1,6 @@
 
 import { TradeSignal, WatchlistItem, User, TradeStatus, LogEntry, ChatMessage, InsightData } from '../types';
 
-// Sanitize the URL to ensure no hidden whitespace
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyERhGFKmElUCIlBSrApSnQ1QaUH359KeLtatIu0GQ6HNmJm7iYz4Wzkon0fTdkpIXY/exec'.trim();
 
 export interface SheetData {
@@ -14,9 +13,6 @@ export interface SheetData {
   insights: InsightData[];
 }
 
-/**
- * Enhanced JSON parser to handle Apps Script responses which might be wrapped in HTML or whitespace.
- */
 const robustParseJson = (text: string) => {
   const trimmed = text.trim();
   try {
@@ -31,9 +27,9 @@ const robustParseJson = (text: string) => {
       }
     }
     if (trimmed.toLowerCase().includes('<!doctype html>')) {
-      throw new Error("Script returned HTML. Ensure GAS deployment is 'Anyone' and 'Web App'.");
+      throw new Error("Terminal access denied. Verify script deployment permissions.");
     }
-    throw new Error("Invalid response format from terminal.");
+    throw new Error("Invalid terminal response format.");
   }
 };
 
@@ -112,21 +108,18 @@ const parseSignalRow = (s: any, index: number, tabName: string): TradeSignal | n
   };
 };
 
-/**
- * Fetches sheet data with Exponential Backoff retry strategy.
- * Uses a clean GET request to avoid CORS preflight OPTIONS triggers.
- */
 export const fetchSheetData = async (retries = 3): Promise<SheetData | null> => {
   if (!SCRIPT_URL) return null;
   
   try {
+    // Standard GET with cache busting to minimize preflight issues
     const response = await fetch(`${SCRIPT_URL}?v=${Date.now()}`, {
       method: 'GET',
       mode: 'cors',
       redirect: 'follow'
     });
     
-    if (!response.ok) throw new Error(`Terminal access error: ${response.status}`);
+    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
 
     const responseText = await response.text();
     const data = robustParseJson(responseText);
@@ -191,20 +184,14 @@ export const fetchSheetData = async (retries = 3): Promise<SheetData | null> => 
       }))
     };
   } catch (error) {
-    console.warn(`Sync Warning (${retries} left): ${error instanceof Error ? error.message : String(error)}`);
     if (retries > 0) {
-      // Exponential Backoff: 1s, 2s, 4s...
-      const delay = Math.pow(2, (3 - retries)) * 1000;
-      await new Promise(r => setTimeout(r, delay));
+      await new Promise(r => setTimeout(r, 1500));
       return fetchSheetData(retries - 1);
     }
-    throw error;
+    return null;
   }
 };
 
-/**
- * Updates sheet data using POST with 'no-cors' to avoid preflight issues.
- */
 export const updateSheetData = async (target: string, action: string, payload: any, id?: string) => {
   if (!SCRIPT_URL) return false;
   try {
@@ -213,7 +200,7 @@ export const updateSheetData = async (target: string, action: string, payload: a
       cleanPayload.targets = cleanPayload.targets.join(', ');
     }
 
-    // Using text/plain as the Content-Type to avoid CORS preflight in Apps Script
+    // Using text/plain for the POST to bypass CORS preflight triggers in Google Apps Script
     await fetch(SCRIPT_URL, {
       method: 'POST',
       mode: 'no-cors', 
@@ -222,7 +209,6 @@ export const updateSheetData = async (target: string, action: string, payload: a
     });
     return true; 
   } catch (error) { 
-    console.error("Transmission Error:", error);
     return false; 
   }
 };

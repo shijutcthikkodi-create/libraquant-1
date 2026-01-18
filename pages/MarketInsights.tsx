@@ -1,6 +1,6 @@
 
-import React, { useState, useMemo } from 'react';
-import { TrendingUp, Activity, BarChart3, Target, Clock, ShieldCheck, Flame } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { TrendingUp, Activity, BarChart3, Target, Clock, ShieldCheck, Flame, Share2, ArrowRightLeft, Zap } from 'lucide-react';
 import { InsightData } from '../types';
 
 interface MarketInsightsProps {
@@ -33,6 +33,7 @@ const isHfr = (val: any): boolean => {
 
 const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
   const [activeTab, setActiveTab] = useState<TabID>('TREND');
+  const [highlightedSymbol, setHighlightedSymbol] = useState<string | null>(null);
 
   const tabs = [
     { id: 'TREND', label: 'Trend', icon: TrendingUp },
@@ -40,26 +41,54 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
     { id: 'FLOW', label: 'Flow', icon: Activity }
   ];
 
-  // LOGIC RULES: 
-  // 1. Assets with 'sentiment' appear in Trend.
-  // 2. Assets with both 'sentiment' AND 'category' appear in Dominance.
-  // 3. Assets with 'pattern' or 'phase' appear in Flow OR if they are Neutral in Trend.
-  
-  const trendData = useMemo(() => insights.filter(i => 
-    i.type === 'TREND' || !!i.sentiment
-  ), [insights]);
+  const trendData = useMemo(() => insights.filter(i => !!i.sentiment), [insights]);
+  const dominanceData = useMemo(() => insights.filter(i => !!i.category && !!i.sentiment), [insights]);
+  const flowData = useMemo(() => insights.filter(i => !!i.pattern || !!i.phase), [insights]);
 
-  const dominanceData = useMemo(() => insights.filter(i => 
-    i.type === 'DOMINANCE' || (i.category && i.sentiment) || isNeutral(i.sentiment)
-  ), [insights]);
+  // Check if an asset exists in multiple tabs
+  const getTabLink = (symbol: string, currentTab: TabID): TabID | null => {
+    if (currentTab === 'TREND') {
+      if (dominanceData.some(d => d.symbol === symbol)) return 'DOMINANCE';
+      if (flowData.some(f => f.symbol === symbol)) return 'FLOW';
+    } else {
+      if (trendData.some(t => t.symbol === symbol)) return 'TREND';
+    }
+    return null;
+  };
 
-  const flowData = useMemo(() => insights.filter(i => 
-    i.type === 'FLOW' || i.pattern || i.phase || isNeutral(i.sentiment)
-  ), [insights]);
+  const handleAssetClick = (symbol: string) => {
+    const targetTab = getTabLink(symbol, activeTab);
+    if (targetTab) {
+      setHighlightedSymbol(symbol);
+      setActiveTab(targetTab);
+      
+      // We need to wait for the tab to switch and elements to render before scrolling
+      setTimeout(() => {
+        const elementId = `${targetTab.toLowerCase()}-${symbol}`;
+        const element = document.getElementById(elementId);
+        const container = document.getElementById('app-main-container');
+        
+        if (element && container) {
+          const offset = 120; // Space for the header
+          const bodyRect = container.getBoundingClientRect().top;
+          const elementRect = element.getBoundingClientRect().top;
+          const elementPosition = elementRect - bodyRect;
+          const offsetPosition = elementPosition + container.scrollTop - offset;
+
+          container.scrollTo({
+            top: offsetPosition,
+            behavior: 'smooth'
+          });
+        }
+      }, 100);
+
+      // Remove highlight after animation
+      setTimeout(() => setHighlightedSymbol(null), 3000);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700 pb-32">
-      {/* Header & Clickable Tabs */}
       <div className="flex flex-col space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-1">
           <div>
@@ -77,7 +106,6 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
           </div>
         </div>
 
-        {/* Professional Tab Bar */}
         <div className="grid grid-cols-3 gap-2 p-1 bg-slate-900/50 backdrop-blur-md rounded-[24px] border border-slate-800 shadow-2xl">
           {tabs.map((tab) => (
             <button
@@ -99,12 +127,19 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
         </div>
       </div>
 
-      {/* Dynamic Content Area */}
       <div className="min-h-[400px] animate-in slide-in-from-bottom-4 duration-500">
         {activeTab === 'TREND' && (
           <div className="space-y-4">
             {trendData.length > 0 ? trendData.map((d, i) => (
-              <TrendStrengthCard key={i} symbol={d.symbol} sentiment={d.sentiment} strength={d.strength ?? 50} />
+              <TrendStrengthCard 
+                key={i} 
+                symbol={d.symbol} 
+                sentiment={d.sentiment} 
+                strength={d.strength ?? 50} 
+                canLink={!!getTabLink(d.symbol, 'TREND')}
+                onLink={() => handleAssetClick(d.symbol)}
+                isHighlighted={highlightedSymbol === d.symbol}
+              />
             )) : (
               <div className="text-center py-20 border-2 border-dashed border-slate-800 rounded-3xl">
                 <p className="text-slate-600 font-black uppercase text-xs tracking-widest">Scanning Trend Map...</p>
@@ -116,7 +151,15 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
         {activeTab === 'DOMINANCE' && (
           <div className="space-y-3">
             {dominanceData.length > 0 ? dominanceData.map((d, i) => (
-              <DominanceLogicRow key={i} symbol={d.symbol} category={d.category} sentiment={d.sentiment} />
+              <DominanceLogicRow 
+                key={i} 
+                symbol={d.symbol} 
+                category={d.category} 
+                sentiment={d.sentiment} 
+                canLink={!!getTabLink(d.symbol, 'DOMINANCE')}
+                onLink={() => handleAssetClick(d.symbol)}
+                isHighlighted={highlightedSymbol === d.symbol}
+              />
             )) : (
               <div className="text-center py-20 border-2 border-dashed border-slate-800 rounded-3xl">
                 <p className="text-slate-600 font-black uppercase text-xs tracking-widest">Awaiting Segment Dominance...</p>
@@ -128,7 +171,16 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
         {activeTab === 'FLOW' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {flowData.length > 0 ? flowData.map((d, i) => (
-              <FlowPatternCard key={i} symbol={d.symbol} pattern={d.pattern} phase={d.phase} sentiment={d.sentiment} />
+              <FlowPatternCard 
+                key={i} 
+                symbol={d.symbol} 
+                pattern={d.pattern} 
+                phase={d.phase} 
+                sentiment={d.sentiment} 
+                canLink={!!getTabLink(d.symbol, 'FLOW')}
+                onLink={() => handleAssetClick(d.symbol)}
+                isHighlighted={highlightedSymbol === d.symbol}
+              />
             )) : (
               <div className="md:col-span-2 text-center py-20 border-2 border-dashed border-slate-800 rounded-3xl">
                 <p className="text-slate-600 font-black uppercase text-xs tracking-widest">Detecting Flow Patterns...</p>
@@ -147,9 +199,12 @@ interface TrendStrengthCardProps {
   symbol: string;
   sentiment?: string;
   strength: number;
+  canLink?: boolean;
+  onLink?: () => void;
+  isHighlighted?: boolean;
 }
 
-const TrendStrengthCard: React.FC<TrendStrengthCardProps> = ({ symbol, sentiment, strength }) => {
+const TrendStrengthCard: React.FC<TrendStrengthCardProps> = ({ symbol, sentiment, strength, canLink, onLink, isHighlighted }) => {
   const isBull = isBullish(sentiment);
   const isBear = isBearish(sentiment);
   const isNeut = isNeutral(sentiment);
@@ -157,11 +212,35 @@ const TrendStrengthCard: React.FC<TrendStrengthCardProps> = ({ symbol, sentiment
   const displaySentiment = isBull ? 'Bullish' : isBear ? 'Bearish' : isNeut ? 'Neutral' : (sentiment || 'Monitoring');
   
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden group">
+    <div 
+      id={`trend-${symbol}`}
+      onClick={onLink}
+      className={`bg-slate-900 border rounded-3xl p-6 shadow-xl relative overflow-hidden group transition-all duration-500 
+        ${canLink ? 'cursor-pointer hover:bg-slate-800/80' : ''}
+        ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-500/20 animate-box-glow scale-[1.02] z-10' : 'border-slate-800'}
+      `}
+    >
+      {canLink && (
+        <div className="absolute top-2 right-12 opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1.5 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
+          <ArrowRightLeft size={10} className="text-blue-400" />
+          <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">Switch View</span>
+        </div>
+      )}
+
+      {isHighlighted && (
+        <div className="absolute top-2 left-2 flex items-center space-x-1.5 bg-blue-600 px-2 py-0.5 rounded-full border border-white/20 shadow-lg">
+          <Zap size={10} className="text-white animate-pulse" />
+          <span className="text-[8px] font-black text-white uppercase tracking-widest">Quantum Focus</span>
+        </div>
+      )}
+
       <div className="flex justify-between items-center mb-6">
         <div className="flex flex-col">
           <span className="text-2xl font-black text-white tracking-tighter font-mono">{symbol}</span>
-          <span className={`text-[10px] font-black uppercase tracking-widest ${isBull ? 'text-emerald-500' : isBear ? 'text-rose-500' : isNeut ? 'text-blue-400' : 'text-slate-500'}`}>{displaySentiment}</span>
+          <div className="flex items-center space-x-2">
+            <span className={`text-[10px] font-black uppercase tracking-widest ${isBull ? 'text-emerald-500' : isBear ? 'text-rose-500' : isNeut ? 'text-blue-400' : 'text-slate-500'}`}>{displaySentiment}</span>
+            {canLink && <Share2 size={10} className="text-blue-500/40" />}
+          </div>
         </div>
         <div className="text-right">
           <div className="flex items-center justify-end space-x-2">
@@ -195,9 +274,12 @@ interface DominanceLogicRowProps {
   symbol: string;
   category?: string;
   sentiment?: string; 
+  canLink?: boolean;
+  onLink?: () => void;
+  isHighlighted?: boolean;
 }
 
-const DominanceLogicRow: React.FC<DominanceLogicRowProps> = ({ symbol, category, sentiment }) => {
+const DominanceLogicRow: React.FC<DominanceLogicRowProps> = ({ symbol, category, sentiment, canLink, onLink, isHighlighted }) => {
   const normCategory = String(category || '').trim().toUpperCase();
   const isBull = isBullish(sentiment);
   const isBear = isBearish(sentiment);
@@ -210,7 +292,7 @@ const DominanceLogicRow: React.FC<DominanceLogicRowProps> = ({ symbol, category,
   if (isNeut) {
     status = "Indecision";
     colorTheme = "blue";
-    displayCategory = "Awaiting News/Event";
+    displayCategory = "Range Bound";
   } else if (normCategory === 'SCALP') {
     status = isBear ? "Active Sellers" : isBull ? "Active Buyers" : "Scalping Range";
     colorTheme = isBear ? "rose" : isBull ? "emerald" : "blue";
@@ -229,13 +311,23 @@ const DominanceLogicRow: React.FC<DominanceLogicRowProps> = ({ symbol, category,
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 flex items-center justify-between shadow-md hover:bg-slate-800/50 transition-all group">
+    <div 
+      id={`dominance-${symbol}`}
+      onClick={onLink}
+      className={`bg-slate-900 border rounded-3xl p-4 flex items-center justify-between shadow-md transition-all duration-500 group 
+        ${canLink ? 'cursor-pointer hover:bg-slate-800' : 'hover:bg-slate-800/50'}
+        ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-500/20 animate-box-glow scale-[1.02] z-10' : 'border-slate-800'}
+      `}
+    >
       <div className="flex items-center space-x-4">
         <div className={`w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400 font-mono font-black border border-slate-700 transition-colors`}>
           {symbol.substring(0, 2).toUpperCase()}
         </div>
         <div>
-          <h4 className="text-base font-black text-white uppercase tracking-tight font-mono leading-none mb-1">{symbol}</h4>
+          <div className="flex items-center space-x-2">
+            <h4 className="text-base font-black text-white uppercase tracking-tight font-mono leading-none mb-1">{symbol}</h4>
+            {canLink && <ArrowRightLeft size={10} className="text-blue-500 animate-pulse" />}
+          </div>
           <span className={`text-[9px] font-black uppercase tracking-widest ${isBull ? 'text-emerald-500' : isBear ? 'text-rose-500' : 'text-blue-400'}`}>
             {isBull ? 'BULLISH' : isBear ? 'BEARISH' : 'NEUTRAL'} BIAS
           </span>
@@ -267,9 +359,12 @@ interface FlowPatternCardProps {
   pattern?: string;
   phase?: string;
   sentiment?: string;
+  canLink?: boolean;
+  onLink?: () => void;
+  isHighlighted?: boolean;
 }
 
-const FlowPatternCard: React.FC<FlowPatternCardProps> = ({ symbol, pattern, phase, sentiment }) => {
+const FlowPatternCard: React.FC<FlowPatternCardProps> = ({ symbol, pattern, phase, sentiment, canLink, onLink, isHighlighted }) => {
   const isAcc = isBullish(phase) || isBullish(pattern);
   const isDis = isBearish(phase) || isBearish(pattern);
   const isNeut = isNeutral(phase) || isNeutral(pattern);
@@ -301,10 +396,20 @@ const FlowPatternCard: React.FC<FlowPatternCardProps> = ({ symbol, pattern, phas
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl hover:border-slate-700 transition-all flex flex-col h-full group">
+    <div 
+      id={`flow-${symbol}`}
+      onClick={onLink}
+      className={`bg-slate-900 border rounded-3xl p-5 shadow-xl transition-all duration-500 flex flex-col h-full group 
+        ${canLink ? 'cursor-pointer hover:bg-slate-800' : 'hover:border-slate-700'}
+        ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-500/20 animate-box-glow scale-[1.02] z-10' : 'border-slate-800'}
+      `}
+    >
       <div className="flex justify-between items-start mb-6">
         <div>
-          <h4 className="text-xl font-mono font-black text-white">{symbol}</h4>
+          <div className="flex items-center space-x-2">
+            <h4 className="text-xl font-mono font-black text-white">{symbol}</h4>
+            {canLink && <Share2 size={12} className="text-blue-500" />}
+          </div>
           <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">{displayPattern} FLOW</span>
         </div>
         <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${badgeClasses[colorTheme]}`}>
