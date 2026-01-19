@@ -92,12 +92,12 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
       <div className="flex flex-col space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-1">
           <div>
-            <h2 className="text-3xl font-black text-white mb-1 flex items-center tracking-tighter">
-              <Flame size={28} className="mr-3 text-rose-500 animate-pulse" />
+            <h2 className="text-2xl font-black text-white mb-1 flex items-center tracking-tighter">
+              <Flame size={24} className="mr-3 text-rose-500 animate-pulse" />
               ALPHA TERMINAL
             </h2>
             <p className="text-slate-500 text-[10px] font-mono uppercase tracking-[0.3em] flex items-center">
-              <ShieldCheck className="mr-1.5 text-blue-500" size={12} /> Quantum Insight Engine
+              <ShieldCheck className="mr-1.5 text-blue-500" size={10} /> Quantum Insight Engine
             </p>
           </div>
           <div className="flex items-center space-x-2 text-slate-500 text-[10px] bg-slate-900 px-4 py-2 rounded-2xl border border-slate-800">
@@ -106,21 +106,21 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 p-1 bg-slate-900/50 backdrop-blur-md rounded-[24px] border border-slate-800 shadow-2xl">
+        <div className="grid grid-cols-3 gap-2 p-1 bg-slate-900/50 backdrop-blur-md rounded-[20px] border border-slate-800 shadow-2xl">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as TabID)}
-              className={`flex flex-col sm:flex-row items-center justify-center py-4 px-2 rounded-[20px] transition-all duration-300 group relative overflow-hidden ${
+              className={`flex flex-col sm:flex-row items-center justify-center py-3 px-2 rounded-[16px] transition-all duration-300 group relative overflow-hidden ${
                 activeTab === tab.id 
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' 
                   : 'text-slate-500 hover:bg-slate-800/50 hover:text-slate-300'
               }`}
             >
-              <tab.icon size={18} className={`mb-1 sm:mb-0 sm:mr-3 ${activeTab === tab.id ? 'animate-pulse' : 'group-hover:scale-110 transition-transform'}`} />
+              <tab.icon size={16} className={`mb-1 sm:mb-0 sm:mr-3 ${activeTab === tab.id ? 'animate-pulse' : 'group-hover:scale-110 transition-transform'}`} />
               <span className="text-[10px] font-black uppercase tracking-[0.2em]">{tab.label}</span>
               {activeTab === tab.id && (
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-1 bg-white rounded-t-full" />
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 bg-white rounded-t-full" />
               )}
             </button>
           ))}
@@ -129,7 +129,7 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
 
       <div className="min-h-[400px] animate-in slide-in-from-bottom-4 duration-500">
         {activeTab === 'TREND' && (
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {trendData.length > 0 ? trendData.map((d, i) => (
               <TrendStrengthCard 
                 key={i} 
@@ -141,7 +141,7 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
                 isHighlighted={highlightedSymbol === d.symbol}
               />
             )) : (
-              <div className="text-center py-20 border-2 border-dashed border-slate-800 rounded-3xl">
+              <div className="md:col-span-2 text-center py-20 border-2 border-dashed border-slate-800 rounded-2xl">
                 <p className="text-slate-600 font-black uppercase text-xs tracking-widest">Scanning Trend Map...</p>
               </div>
             )}
@@ -149,7 +149,7 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
         )}
 
         {activeTab === 'DOMINANCE' && (
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {dominanceData.length > 0 ? dominanceData.map((d, i) => (
               <DominanceLogicRow 
                 key={i} 
@@ -161,7 +161,7 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
                 isHighlighted={highlightedSymbol === d.symbol}
               />
             )) : (
-              <div className="text-center py-20 border-2 border-dashed border-slate-800 rounded-3xl">
+              <div className="text-center py-20 border-2 border-dashed border-slate-800 rounded-2xl">
                 <p className="text-slate-600 font-black uppercase text-xs tracking-widest">Awaiting Segment Dominance...</p>
               </div>
             )}
@@ -169,7 +169,7 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
         )}
 
         {activeTab === 'FLOW' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {flowData.length > 0 ? flowData.map((d, i) => (
               <FlowPatternCard 
                 key={i} 
@@ -182,7 +182,7 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
                 isHighlighted={highlightedSymbol === d.symbol}
               />
             )) : (
-              <div className="md:col-span-2 text-center py-20 border-2 border-dashed border-slate-800 rounded-3xl">
+              <div className="md:col-span-2 text-center py-20 border-2 border-dashed border-slate-800 rounded-2xl">
                 <p className="text-slate-600 font-black uppercase text-xs tracking-widest">Detecting Flow Patterns...</p>
               </div>
             )}
@@ -215,42 +215,42 @@ const TrendStrengthCard: React.FC<TrendStrengthCardProps> = ({ symbol, sentiment
     <div 
       id={`trend-${symbol}`}
       onClick={onLink}
-      className={`bg-slate-900 border rounded-3xl p-6 shadow-xl relative overflow-hidden group transition-all duration-500 
+      className={`bg-slate-900 border rounded-2xl p-4 shadow-xl relative overflow-hidden group transition-all duration-500 
         ${canLink ? 'cursor-pointer hover:bg-slate-800/80' : ''}
         ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-500/20 animate-box-glow scale-[1.02] z-10' : 'border-slate-800'}
       `}
     >
       {canLink && (
-        <div className="absolute top-2 right-12 opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1.5 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
-          <ArrowRightLeft size={10} className="text-blue-400" />
-          <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">Switch View</span>
+        <div className="absolute top-1.5 right-10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1 bg-blue-500/10 px-1.5 py-0.5 rounded-full border border-blue-500/20">
+          <ArrowRightLeft size={8} className="text-blue-400" />
+          <span className="text-[7px] font-black text-blue-400 uppercase tracking-widest">View Map</span>
         </div>
       )}
 
       {isHighlighted && (
-        <div className="absolute top-2 left-2 flex items-center space-x-1.5 bg-blue-600 px-2 py-0.5 rounded-full border border-white/20 shadow-lg">
-          <Zap size={10} className="text-white animate-pulse" />
-          <span className="text-[8px] font-black text-white uppercase tracking-widest">Quantum Focus</span>
+        <div className="absolute top-1.5 left-1.5 flex items-center space-x-1.5 bg-blue-600 px-1.5 py-0.5 rounded-full border border-white/20 shadow-lg">
+          <Zap size={8} className="text-white animate-pulse" />
+          <span className="text-[7px] font-black text-white uppercase tracking-widest">Quantum Focus</span>
         </div>
       )}
 
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-3">
         <div className="flex flex-col">
-          <span className="text-2xl font-black text-white tracking-tighter font-mono">{symbol}</span>
-          <div className="flex items-center space-x-2">
-            <span className={`text-[10px] font-black uppercase tracking-widest ${isBull ? 'text-emerald-500' : isBear ? 'text-rose-500' : isNeut ? 'text-blue-400' : 'text-slate-500'}`}>{displaySentiment}</span>
-            {canLink && <Share2 size={10} className="text-blue-500/40" />}
+          <span className="text-lg font-black text-white tracking-tighter font-mono leading-none">{symbol}</span>
+          <div className="flex items-center space-x-1.5 mt-0.5">
+            <span className={`text-[9px] font-black uppercase tracking-widest ${isBull ? 'text-emerald-500' : isBear ? 'text-rose-500' : isNeut ? 'text-blue-400' : 'text-slate-500'}`}>{displaySentiment}</span>
+            {canLink && <Share2 size={8} className="text-blue-500/40" />}
           </div>
         </div>
         <div className="text-right">
-          <div className="flex items-center justify-end space-x-2">
-            <span className={`text-[11px] font-black uppercase tracking-widest ${isBull ? 'text-emerald-400' : isBear ? 'text-rose-400' : isNeut ? 'text-blue-300' : 'text-slate-400'}`}>{status}</span>
-            <div className={`w-2 h-2 rounded-full ${isBull ? 'bg-emerald-500' : isBear ? 'bg-rose-500' : isNeut ? 'bg-blue-500' : 'bg-slate-500'} animate-pulse`} />
+          <div className="flex items-center justify-end space-x-1.5">
+            <span className={`text-[9px] font-black uppercase tracking-widest ${isBull ? 'text-emerald-400' : isBear ? 'text-rose-400' : isNeut ? 'text-blue-300' : 'text-slate-400'}`}>{status}</span>
+            <div className={`w-1.5 h-1.5 rounded-full ${isBull ? 'bg-emerald-500' : isBear ? 'bg-rose-500' : isNeut ? 'bg-blue-500' : 'bg-slate-500'} animate-pulse`} />
           </div>
         </div>
       </div>
       
-      <div className="relative h-6 bg-slate-950 rounded-full border border-slate-800 p-1 flex">
+      <div className="relative h-4 bg-slate-950 rounded-full border border-slate-800 p-0.5 flex">
         <div 
           className={`h-full rounded-full transition-all duration-1000 ease-out shadow-lg ${
             isBull ? 'bg-gradient-to-r from-emerald-600 to-emerald-400 shadow-emerald-500/20' : 
@@ -260,10 +260,10 @@ const TrendStrengthCard: React.FC<TrendStrengthCardProps> = ({ symbol, sentiment
           }`}
           style={{ width: `${strength}%` }}
         />
-        <div className="absolute inset-0 flex justify-between items-center px-4 pointer-events-none">
-          <span className="text-[9px] text-white/40 font-black font-mono">0</span>
-          <span className="text-[10px] text-white font-black font-mono">{strength}% STRENGTH</span>
-          <span className="text-[9px] text-white/40 font-black font-mono">100</span>
+        <div className="absolute inset-0 flex justify-between items-center px-3 pointer-events-none">
+          <span className="text-[7px] text-white/30 font-black font-mono">0</span>
+          <span className="text-[8px] text-white/80 font-black font-mono tracking-tight">{strength}% INTENSITY</span>
+          <span className="text-[7px] text-white/30 font-black font-mono">100</span>
         </div>
       </div>
     </div>
@@ -314,28 +314,28 @@ const DominanceLogicRow: React.FC<DominanceLogicRowProps> = ({ symbol, category,
     <div 
       id={`dominance-${symbol}`}
       onClick={onLink}
-      className={`bg-slate-900 border rounded-3xl p-4 flex items-center justify-between shadow-md transition-all duration-500 group 
+      className={`bg-slate-900 border rounded-2xl p-3 flex items-center justify-between shadow-md transition-all duration-500 group 
         ${canLink ? 'cursor-pointer hover:bg-slate-800' : 'hover:bg-slate-800/50'}
-        ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-500/20 animate-box-glow scale-[1.02] z-10' : 'border-slate-800'}
+        ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-500/20 animate-box-glow scale-[1.01] z-10' : 'border-slate-800'}
       `}
     >
-      <div className="flex items-center space-x-4">
-        <div className={`w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400 font-mono font-black border border-slate-700 transition-colors`}>
+      <div className="flex items-center space-x-3">
+        <div className={`w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400 font-mono font-black border border-slate-700 text-[10px]`}>
           {symbol.substring(0, 2).toUpperCase()}
         </div>
         <div>
-          <div className="flex items-center space-x-2">
-            <h4 className="text-base font-black text-white uppercase tracking-tight font-mono leading-none mb-1">{symbol}</h4>
-            {canLink && <ArrowRightLeft size={10} className="text-blue-500 animate-pulse" />}
+          <div className="flex items-center space-x-1.5">
+            <h4 className="text-sm font-black text-white uppercase tracking-tight font-mono leading-none">{symbol}</h4>
+            {canLink && <ArrowRightLeft size={8} className="text-blue-500 animate-pulse" />}
           </div>
-          <span className={`text-[9px] font-black uppercase tracking-widest ${isBull ? 'text-emerald-500' : isBear ? 'text-rose-500' : 'text-blue-400'}`}>
+          <span className={`text-[8px] font-black uppercase tracking-widest ${isBull ? 'text-emerald-500' : isBear ? 'text-rose-500' : 'text-blue-400'}`}>
             {isBull ? 'BULLISH' : isBear ? 'BEARISH' : 'NEUTRAL'} BIAS
           </span>
         </div>
       </div>
       
       <div className="flex-1 flex justify-center">
-        <div className={`px-6 py-2 rounded-full border-2 transition-all shadow-inner font-black text-[10px] uppercase tracking-widest ${
+        <div className={`px-4 py-1 rounded-full border transition-all shadow-inner font-black text-[9px] uppercase tracking-widest ${
           colorTheme === 'rose' ? 'bg-slate-950 border-rose-500/40 text-rose-400' :
           colorTheme === 'emerald' ? 'bg-slate-950 border-emerald-500/40 text-emerald-400' :
           'bg-slate-950 border-blue-500/40 text-blue-400'
@@ -344,11 +344,11 @@ const DominanceLogicRow: React.FC<DominanceLogicRowProps> = ({ symbol, category,
         </div>
       </div>
 
-      <div className="flex items-center space-x-3 text-right min-w-[120px]">
-        <span className={`text-[10px] font-black uppercase tracking-tighter ${textClasses[colorTheme]}`}>
+      <div className="flex items-center space-x-2 text-right min-w-[100px]">
+        <span className={`text-[9px] font-black uppercase tracking-tighter ${textClasses[colorTheme]}`}>
           {status}
         </span>
-        <Target size={14} className="text-slate-700 group-hover:text-blue-500 transition-colors" />
+        <Target size={12} className="text-slate-700 group-hover:text-blue-500 transition-colors" />
       </div>
     </div>
   );
@@ -399,25 +399,25 @@ const FlowPatternCard: React.FC<FlowPatternCardProps> = ({ symbol, pattern, phas
     <div 
       id={`flow-${symbol}`}
       onClick={onLink}
-      className={`bg-slate-900 border rounded-3xl p-5 shadow-xl transition-all duration-500 flex flex-col h-full group 
+      className={`bg-slate-900 border rounded-2xl p-4 shadow-xl transition-all duration-500 flex flex-col h-full group 
         ${canLink ? 'cursor-pointer hover:bg-slate-800' : 'hover:border-slate-700'}
-        ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-500/20 animate-box-glow scale-[1.02] z-10' : 'border-slate-800'}
+        ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-500/20 animate-box-glow scale-[1.01] z-10' : 'border-slate-800'}
       `}
     >
-      <div className="flex justify-between items-start mb-6">
+      <div className="flex justify-between items-start mb-4">
         <div>
-          <div className="flex items-center space-x-2">
-            <h4 className="text-xl font-mono font-black text-white">{symbol}</h4>
-            {canLink && <Share2 size={12} className="text-blue-500" />}
+          <div className="flex items-center space-x-1.5">
+            <h4 className="text-lg font-mono font-black text-white leading-none">{symbol}</h4>
+            {canLink && <Share2 size={10} className="text-blue-500" />}
           </div>
-          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">{displayPattern} FLOW</span>
+          <span className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500 mt-1 block leading-none">{displayPattern} FLOW</span>
         </div>
-        <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${badgeClasses[colorTheme]}`}>
+        <span className={`px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest border ${badgeClasses[colorTheme]}`}>
           {status}
         </span>
       </div>
       
-      <div className="flex-1 min-h-[100px] bg-slate-950 rounded-2xl border border-slate-800/50 relative overflow-hidden flex flex-col items-center justify-center p-4">
+      <div className="flex-1 min-h-[80px] bg-slate-950 rounded-xl border border-slate-800/50 relative overflow-hidden flex flex-col items-center justify-center p-3">
         <svg className="absolute inset-0 w-full h-full opacity-30" viewBox="0 0 100 40" preserveAspectRatio="none">
           <path 
             d={isHFR 
@@ -425,11 +425,11 @@ const FlowPatternCard: React.FC<FlowPatternCardProps> = ({ symbol, pattern, phas
               : (isNeut || isTrendNeut) ? "M0 20 Q 25 20, 50 20 T 100 20" : "M0 20 Q 15 15, 30 20 T 60 20 T 90 20 T 100 20"} 
             fill="none" 
             stroke={isTrendNeut ? '#f59e0b' : isAcc ? '#10b981' : isDis ? '#f43f5e' : '#3b82f6'} 
-            strokeWidth="1.5"
+            strokeWidth="1.2"
             className="animate-pulse"
           />
         </svg>
-        <span className={`text-[10px] font-black uppercase tracking-[0.3em] relative z-10 animate-pulse ${textClasses[colorTheme]}`}>
+        <span className={`text-[9px] font-black uppercase tracking-[0.2em] relative z-10 animate-pulse ${textClasses[colorTheme]}`}>
           {subTitle}
         </span>
       </div>
