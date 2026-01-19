@@ -11,7 +11,7 @@ import BookedTrades from './pages/BookedTrades';
 import MarketInsights from './pages/MarketInsights';
 import { User, WatchlistItem, TradeSignal, TradeStatus, LogEntry, ChatMessage, InsightData } from './types';
 import { fetchSheetData, updateSheetData } from './services/googleSheetsService';
-import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen, Briefcase, ExternalLink, MessageCircle, ShieldAlert, AlertTriangle, ArrowRight, CheckCircle2, Activity, Flame } from 'lucide-react';
+import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen, Briefcase, ExternalLink, MessageCircle, ShieldAlert, AlertTriangle, ArrowRight, CheckCircle2, Activity, Flame, ShieldCheck } from 'lucide-react';
 
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; 
 const SESSION_KEY = 'libra_user_session';
@@ -517,7 +517,10 @@ const App: React.FC = () => {
           <button onClick={initAudio} className="w-full max-w-xs bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-900/40 uppercase tracking-[0.2em] text-xs transition-all active:scale-95">Activate Live Feed</button>
         </div>
       )}
+      
+      {/* Floating Action Controls Container */}
       <div className="fixed top-4 right-4 z-[100] flex flex-col items-end space-y-3">
+        {/* Sync Status Badge */}
         <div className={`bg-slate-900/95 backdrop-blur-md px-3 py-2 rounded-xl text-[10px] font-bold border shadow-2xl flex items-center ${connectionStatus === 'error' ? 'border-rose-500 bg-rose-950/20' : 'border-slate-800'}`}>
           <div className="flex flex-col items-start mr-3">
               <span className="text-[9px] text-slate-500 uppercase tracking-tighter leading-none mb-1">Terminal Link</span>
@@ -526,11 +529,27 @@ const App: React.FC = () => {
                  <span className={`${connectionStatus === 'error' ? 'text-rose-400' : 'text-white'} font-mono`}>{connectionStatus === 'error' ? 'RETRYING...' : lastSyncTime}</span>
               </div>
           </div>
-          <button onClick={() => sync(true)} className="p-1.5 rounded-lg bg-slate-800 text-blue-400 border border-blue-500/20"><Database size={14} /></button>
+          <button onClick={() => sync(true)} className="p-1.5 rounded-lg bg-slate-800 text-blue-400 border border-blue-500/20 hover:bg-slate-700 transition-colors"><Database size={14} /></button>
         </div>
-        <button onClick={toggleSound} className={`p-4 rounded-full border shadow-2xl transition-all active:scale-90 ${soundEnabled ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400 shadow-cyan-500/10' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+
+        {/* Audio Toggle Pill */}
+        <button onClick={toggleSound} className={`p-4 rounded-full border shadow-2xl transition-all active:scale-90 flex items-center justify-center ${soundEnabled ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400 shadow-cyan-500/10' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
           {soundEnabled ? <Volume2 size={32} /> : <VolumeX size={32} />}
         </button>
+
+        {/* SMALL FLOATING DEMAT BADGE - Right below Sound Toggle */}
+        <a 
+          href="https://oa.mynt.in/?ref=ZTN348" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="group flex items-center bg-emerald-600 hover:bg-emerald-500 text-white rounded-full px-3 py-1.5 border border-emerald-400/30 shadow-lg shadow-emerald-900/40 transition-all hover:scale-105 active:scale-95 animate-in slide-in-from-right-4 duration-500"
+        >
+          <div className="bg-white/20 p-1 rounded-full mr-2">
+            <ShieldCheck size={10} className="text-white" />
+          </div>
+          <span className="text-[9px] font-black uppercase tracking-widest mr-1">Open Demat</span>
+          <ExternalLink size={10} className="opacity-70 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+        </a>
       </div>
 
       <a 
