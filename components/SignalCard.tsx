@@ -118,9 +118,9 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
   
   const getStampContent = () => {
     if (isAllTarget) return { text: 'COMPLETED', color: 'text-emerald-500' };
-    if (isSLHit) return { text: 'SL SEALED', color: 'text-rose-500' };
-    if (isTSLHit) return { text: 'TSL HIT', color: 'text-amber-500' };
-    return { text: 'POSITION CLOSED', color: 'text-slate-400' };
+    if (isSLHit) return { text: 'INVALIDATED', color: 'text-rose-500' };
+    if (isTSLHit) return { text: 'PROTECTION HIT', color: 'text-amber-500' };
+    return { text: 'VIEW CLOSED', color: 'text-slate-400' };
   };
 
   const stamp = getStampContent();
@@ -150,7 +150,7 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
                  <span className="text-2xl tracking-[0.2em]">{stamp.text}</span>
                  <div className="flex items-center mt-1 space-x-2">
                     <History size={12} />
-                    <span className="text-[10px] font-bold opacity-60 uppercase">Sheet Archiving</span>
+                    <span className="text-[10px] font-bold opacity-60 uppercase">System Archiving</span>
                  </div>
               </div>
            </div>
@@ -164,9 +164,6 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center space-x-2 mb-0.5">
-                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-tight ${isBuy ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500 text-white'}`}>
-                    {isBuy ? 'POTENTIAL UP' : 'POTENTIAL DOWN'}
-                </span>
                 <h3 className="text-xl font-bold text-white tracking-tight font-mono truncate">{signal.instrument}</h3>
                 {isBTST && isActive && (
                   <div className={`flex items-center px-2 py-0.5 rounded bg-amber-500 text-slate-950 text-[9px] font-black shadow-lg animate-pulse whitespace-nowrap`}>
@@ -178,6 +175,9 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
                 <span className="font-mono text-slate-400 uppercase">{signal.symbol}</span>
                 <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${signal.type === OptionType.CE ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>
                     {signal.type}
+                </span>
+                <span className={`px-2 py-0.5 rounded text-white text-[9px] font-black uppercase tracking-tight shadow-sm ${isBuy ? 'bg-green-600' : 'bg-red-600'}`}>
+                    {isBuy ? 'POTENTIAL UP' : 'POTENTIAL DOWN'}
                 </span>
             </div>
           </div>
@@ -217,7 +217,7 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
         </div>
         
         <div className={`p-4 flex flex-col transition-colors duration-500 ${isSLHit ? 'bg-rose-950/20' : 'bg-slate-900'} ${!isExited && highlights?.has('stopLoss') ? 'animate-box-blink' : ''}`}>
-            <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest mb-1 leading-none">Protection</p>
+            <p className="text-[9px] text-slate-500 uppercase font-black tracking-widest mb-1 leading-none">Invalidation Point</p>
             <p className={`text-xl font-mono font-bold mb-3 leading-tight ${isSLHit ? 'text-rose-500' : 'text-rose-400'}`}>
               ₹{Number(signal.stopLoss || 0).toFixed(2)}
             </p>
@@ -234,7 +234,7 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
                     <div className={`flex items-center justify-between rounded -mx-1 px-1 py-1 transition-colors group/trail ${canEdit ? 'cursor-pointer hover:bg-slate-800/50' : 'opacity-70'}`} onClick={() => canEdit && setIsEditingTrail(true)}>
                          <div className="flex items-center space-x-1.5">
                             <TrendingUp size={10} className={isTSLHit ? 'text-rose-500' : 'text-yellow-600'} />
-                            <span className="text-[9px] text-slate-500 uppercase font-black tracking-tighter whitespace-nowrap">Risk Guard</span>
+                            <span className="text-[9px] text-slate-500 uppercase font-black tracking-tighter whitespace-nowrap">Protection</span>
                          </div>
                          <div className="flex items-center space-x-2">
                             <span className={`text-xs font-mono font-bold ${isTSLHit ? 'text-rose-500' : 'text-yellow-500'}`}>

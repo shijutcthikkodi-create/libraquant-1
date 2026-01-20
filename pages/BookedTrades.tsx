@@ -215,7 +215,7 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
 
         <div className="flex flex-col sm:flex-row items-center gap-4">
            <div className="px-6 py-4 bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl flex flex-col items-center justify-center min-w-[180px] border-l-4 border-l-blue-500">
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] mb-1">Session Net P&L</p>
+              <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] mb-1">Daily Outcome Summary</p>
               <p className={`text-2xl font-mono font-black ${stats.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                 ₹{stats.net.toLocaleString('en-IN')}
               </p>
@@ -223,7 +223,7 @@ const BookedTrades: React.FC<BookedTradesProps> = ({
            </div>
            
            <div className="px-6 py-4 bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl flex flex-col items-center justify-center min-w-[180px] border-l-4 border-l-emerald-500">
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] mb-1">Monthly Surplus</p>
+              <p className="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] mb-1">Monthly Outcome Summary</p>
               <p className={`text-2xl font-mono font-black ${monthlyStats.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                 ₹{monthlyStats.net.toLocaleString('en-IN')}
               </p>

@@ -151,8 +151,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                               {lastGivenTrade.instrument} {lastGivenTrade.symbol} {lastGivenTrade.type}
                           </h3>
                           <div className="flex items-center text-sm font-black space-x-3">
-                              <span className={`px-3 py-1 rounded-lg border ${lastGivenTrade.action === 'BUY' ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20' : 'text-rose-400 bg-rose-400/10 border-rose-400/20'}`}>
-                                  {lastGivenTrade.action} @ ₹{lastGivenTrade.entryPrice}
+                              <span className={`px-3 py-1 rounded-lg text-white font-black shadow-sm ${lastGivenTrade.action === 'BUY' ? 'bg-green-600' : 'bg-red-600'}`}>
+                                  {lastGivenTrade.action === 'BUY' ? 'POTENTIAL UP' : 'POTENTIAL DOWN'} @ ₹{lastGivenTrade.entryPrice}
                               </span>
                           </div>
                       </div>
@@ -184,7 +184,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     const isAlerting = !!activeWatchlistAlerts[item.symbol];
                     return (
                       <div key={idx} className={`flex items-center justify-between px-4 py-1.5 transition-all duration-200 relative ${isAlerting ? 'animate-box-glow bg-blue-500/10 z-10' : 'hover:bg-slate-800/20'}`}>
-                          <div className="flex items-center space-x-3 min-w-0">
+                          <div className="flex items-center space-x-3 min-0">
                               <div className={`w-1 h-1 rounded-full ${item.isPositive ? 'bg-emerald-500' : 'bg-rose-500'} ${isAlerting ? 'animate-ping' : ''}`}></div>
                               <div className="flex items-baseline space-x-2">
                                 <span className={`text-[11px] font-black uppercase tracking-wider truncate ${isAlerting ? 'text-white' : 'text-slate-300'}`}>{item.symbol}</span>

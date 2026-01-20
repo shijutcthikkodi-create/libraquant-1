@@ -1,10 +1,9 @@
 
 import React, { useMemo, useState, useLayoutEffect, useRef } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, TooltipProps } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { TradeSignal, TradeStatus } from '../types';
-import { TrendingUp, Activity, BarChart3, Filter, Award, Clock, Layers, Briefcase, History as HistoryIcon, Zap, Calendar } from 'lucide-react';
+import { TrendingUp, BarChart3, Filter, Award, Clock, Layers, Briefcase, History as HistoryIcon, Zap, Calendar } from 'lucide-react';
 
-// Using any for props to avoid strictly typed Recharts TooltipProps issues in varied environments
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const pnl = payload[0].value || 0;
@@ -28,10 +27,8 @@ const Stats: React.FC<{ signals?: (TradeSignal & { sheetIndex?: number })[]; his
   const [chartWidth, setChartWidth] = useState<number | string>('100%');
   const [isReady, setIsReady] = useState(false);
 
-  // ResizeObserver to handle Recharts dimension warning
   useLayoutEffect(() => {
     if (!containerRef.current) return;
-
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (entry && entry.contentRect.width > 0) {
@@ -39,25 +36,17 @@ const Stats: React.FC<{ signals?: (TradeSignal & { sheetIndex?: number })[]; his
         setIsReady(true);
       }
     });
-
     observer.observe(containerRef.current);
-    
-    return () => {
-      observer.disconnect();
-    };
+    return () => observer.disconnect();
   }, []);
 
   const normalizeDate = (trade: TradeSignal): string => {
     const ts = trade.lastTradedTimestamp || trade.date || trade.timestamp;
     if (!ts) return '';
-    
     if ((ts as any) instanceof Date || (typeof ts === 'string' && ts.includes('T'))) {
       const d = new Date(ts);
-      if (!isNaN(d.getTime())) {
-        return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
-      }
+      if (!isNaN(d.getTime())) return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
     }
-
     const rawDate = String(ts).trim();
     if (rawDate.includes('-')) {
       const parts = rawDate.split('-');
@@ -80,28 +69,26 @@ const Stats: React.FC<{ signals?: (TradeSignal & { sheetIndex?: number })[]; his
     thirtyDaysAgo.setDate(now.getDate() - 30);
     const thirtyDaysAgoStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(thirtyDaysAgo);
     
-    // Unified pool of realized trades
     const unifiedMap = new Map<string, TradeSignal>();
-    
-    // 1. Process Active Closed (Realized today/recently)
     (signals || []).forEach(s => {
       if (s.status === TradeStatus.EXITED || s.status === TradeStatus.STOPPED || s.status === TradeStatus.ALL_TARGET) {
         if (s.id) unifiedMap.set(s.id, s);
       }
     });
-
-    // 2. Process Historical Data
     (historySignals || []).forEach(s => {
       const id = s.id || `hist-${normalizeDate(s)}-${s.symbol}-${s.entryPrice}`;
       unifiedMap.set(id, s);
     });
 
     const combinedHistory = Array.from(unifiedMap.values());
-    const rollingStats = { pnl: 0, indexPnL: 0, stockPnL: 0, overall: [] as number[], intraday: [] as number[], btst: [] as number[] };
+    const rollingStats = { 
+      pnl: 0, indexPnL: 0, stockPnL: 0, 
+      overall: [] as number[], intraday: [] as number[], btst: [] as number[] 
+    };
 
-    let firstTradeDate: string | null = null;
+    let earliestAuditDate: string | null = null;
+    let latestAuditDate: string | null = null;
 
-    // Chart Tracker (Last 14 Days)
     const chartMap: Record<string, number> = {};
     for (let i = 13; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i);
@@ -111,54 +98,54 @@ const Stats: React.FC<{ signals?: (TradeSignal & { sheetIndex?: number })[]; his
     combinedHistory.forEach(trade => {
       const tradeDateStr = normalizeDate(trade);
       if (!tradeDateStr) return;
-      
-      // Track absolute first trade date for the UI range label
-      if (!firstTradeDate || tradeDateStr < firstTradeDate) {
-        firstTradeDate = tradeDateStr;
-      }
 
       const qty = Number(trade.quantity && trade.quantity > 0 ? trade.quantity : 1);
-      const pnl = Number(trade.pnlRupees !== undefined ? trade.pnlRupees : (trade.pnlPoints || 0) * qty);
+      const pnlValue = Number(trade.pnlRupees !== undefined ? trade.pnlRupees : (trade.pnlPoints || 0) * qty);
+      
+      const successScore = Number(trade.pnlRupees !== undefined ? trade.pnlRupees : (trade.pnlPoints || 0));
 
-      // Trailing 30-Day Filter for Statistics calculation
       if (tradeDateStr >= thirtyDaysAgoStr) {
-        rollingStats.pnl += pnl;
-        rollingStats.overall.push(pnl);
+        rollingStats.pnl += pnlValue;
+        rollingStats.overall.push(successScore);
+
+        if (!earliestAuditDate || tradeDateStr < earliestAuditDate) earliestAuditDate = tradeDateStr;
+        if (!latestAuditDate || tradeDateStr > latestAuditDate) latestAuditDate = tradeDateStr;
+        
         const instrument = trade.instrument || '';
         const indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX'];
         const isIdx = indices.includes(instrument.toUpperCase());
         
-        if (isIdx) rollingStats.indexPnL += pnl; else rollingStats.stockPnL += pnl;
-        if (trade.isBTST) rollingStats.btst.push(pnl); else rollingStats.intraday.push(pnl);
+        if (isIdx) rollingStats.indexPnL += pnlValue; else rollingStats.stockPnL += pnlValue;
+        if (trade.isBTST) rollingStats.btst.push(successScore); else rollingStats.intraday.push(successScore);
       }
       
-      // Chart Feed (Last 14 days window)
-      if (chartMap[tradeDateStr] !== undefined) {
-        chartMap[tradeDateStr] += pnl;
-      }
+      if (chartMap[tradeDateStr] !== undefined) chartMap[tradeDateStr] += pnlValue;
     });
 
-    const calculateWinRate = (list: number[]) => list.length === 0 ? 0 : (list.filter(v => v > 0).length / list.length) * 100;
-
-    // Format the range label: e.g., "DEC 20 TO JAN 20"
-    const formatDateLabel = (isoStr: string) => {
-      const d = new Date(isoStr);
-      return d.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }).toUpperCase();
+    const calculateConsistency = (list: number[]) => {
+      // Logic: 0 P&L trade is ignored entirely from the consistency calculation
+      const filteredList = list.filter(v => v !== 0);
+      if (filteredList.length === 0) return 0;
+      
+      const successCount = filteredList.filter(v => v > 0).length;
+      return (successCount / filteredList.length) * 100;
     };
 
-    const dateRangeLabel = firstTradeDate 
-      ? `${formatDateLabel(firstTradeDate)} TO ${formatDateLabel(now.toISOString())}`
-      : `SCANNING DATASHEET...`;
+    const formatDate = (isoStr: string | null) => {
+      if (!isoStr) return '--';
+      const d = new Date(isoStr);
+      return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }).toUpperCase();
+    };
 
     return {
       rollingPnL: rollingStats.pnl,
       indexPnL: rollingStats.indexPnL,
       stockPnL: rollingStats.stockPnL,
-      overallWinRate: calculateWinRate(rollingStats.overall),
-      intradayWinRate: calculateWinRate(rollingStats.intraday),
-      btstWinRate: calculateWinRate(rollingStats.btst),
-      totalTrades: rollingStats.overall.length,
-      dateRangeLabel,
+      overallPercent: calculateConsistency(rollingStats.overall),
+      intradayPercent: calculateConsistency(rollingStats.intraday),
+      overnightPercent: calculateConsistency(rollingStats.btst),
+      auditStart: formatDate(earliestAuditDate),
+      auditEnd: formatDate(latestAuditDate || now.toISOString()),
       chartData: Object.entries(chartMap).map(([date, pnl]) => ({ 
         date: date.split('-').reverse().slice(0, 2).join('/'), 
         pnl 
@@ -166,46 +153,100 @@ const Stats: React.FC<{ signals?: (TradeSignal & { sheetIndex?: number })[]; his
     };
   }, [signals, historySignals]);
 
+  const getConsistencyColor = (percent: number) => {
+    if (percent < 50) return 'text-rose-500';
+    if (percent < 60) return 'text-yellow-500';
+    
+    // Above 60%: Darkening Green logic (each 5% turns to dark)
+    if (percent < 65) return 'text-emerald-400';
+    if (percent < 70) return 'text-emerald-500';
+    if (percent < 75) return 'text-emerald-600';
+    if (percent < 80) return 'text-emerald-700';
+    if (percent < 85) return 'text-emerald-800';
+    return 'text-emerald-950'; 
+  };
+
   const formatCurrency = (val: number) => `₹${val.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-white mb-1 flex items-center"><TrendingUp size={24} className="mr-2 text-yellow-500" />Performance Metrics</h2>
-          <p className="text-blue-500 text-[10px] font-mono font-black uppercase tracking-widest flex items-center">
-            <Calendar className="mr-1.5 text-blue-500" size={12} /> 
-            {performance.dateRangeLabel}
+        <div className="flex flex-col">
+          <h2 className="text-2xl font-bold text-white mb-1 flex items-center">
+            <TrendingUp size={24} className="mr-2 text-yellow-500" />
+            Performance Metrics
+          </h2>
+          <p className="text-slate-400 text-[10px] font-mono font-black uppercase tracking-widest leading-none mb-2">
+            Institutional Efficiency Audit
           </p>
+          <div className="flex items-center space-x-3">
+             <div className="flex items-center space-x-1">
+                <span className="text-slate-500 text-[9px] font-black uppercase tracking-tighter">Audit Start:</span>
+                <span className="text-blue-500 text-[10px] font-mono font-black">{performance.auditStart}</span>
+             </div>
+             <div className="w-1 h-1 rounded-full bg-slate-800"></div>
+             <div className="flex items-center space-x-1">
+                <span className="text-slate-500 text-[9px] font-black uppercase tracking-tighter">Audit End:</span>
+                <span className="text-blue-500 text-[10px] font-mono font-black">{performance.auditEnd}</span>
+             </div>
+          </div>
         </div>
         <div className="flex items-center space-x-2 text-slate-400 text-[10px] bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
            <Filter size={12} className="text-blue-500" />
-           <span className="uppercase font-black tracking-tighter">Metric Focus: Last 30 Days</span>
+           <span className="uppercase font-black tracking-tighter">Rolling 30-Day Terminal Data</span>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Row 1: 30-Day Surplus & Win Rate */}
-        <StatItem label="30-Day Surplus" value={formatCurrency(performance.rollingPnL)} isPositive={performance.rollingPnL >= 0} icon={HistoryIcon} highlight={true} subtext={`Realized P&L (Rolling)`} />
-        <StatItem label="Win Rate (30D)" value={`${performance.overallWinRate.toFixed(1)}%`} isPositive={performance.overallWinRate >= 65} icon={Award} subtext="Aggregated Unified Accuracy" />
+        <StatItem 
+          label="30-Day Net Outcome" 
+          value={formatCurrency(performance.rollingPnL)} 
+          isPositive={performance.rollingPnL >= 0} 
+          icon={HistoryIcon} 
+          highlight={true} 
+        />
+        <StatItem 
+          label="Consistency Ratio (30-Day)" 
+          value={`${performance.overallPercent.toFixed(1)}%`} 
+          colorClass={getConsistencyColor(performance.overallPercent)}
+          icon={Award}
+        />
         
-        {/* Row 2: Stock P&L & Intraday Accuracy */}
-        <StatItem label="Stock 30D P&L" value={formatCurrency(performance.stockPnL)} isPositive={performance.stockPnL >= 0} icon={Briefcase} subtext="Equity Options Surplus" />
-        <StatItem label="Intraday Accuracy" value={`${performance.intradayWinRate.toFixed(1)}%`} isPositive={performance.intradayWinRate >= 65} icon={Zap} subtext="Day-Trading Accuracy" />
+        <StatItem 
+          label="Stock – 30-Day Net Outcome" 
+          value={formatCurrency(performance.stockPnL)} 
+          isPositive={performance.stockPnL >= 0} 
+          icon={Briefcase} 
+        />
+        <StatItem 
+          label="Intraday Consistency" 
+          value={`${performance.intradayPercent.toFixed(1)}%`} 
+          colorClass={getConsistencyColor(performance.intradayPercent)}
+          icon={Zap}
+        />
         
-        {/* Row 3: Index P&L & BTST Reliability */}
-        <StatItem label="Index 30D P&L" value={formatCurrency(performance.indexPnL)} isPositive={performance.indexPnL >= 0} icon={Layers} subtext="Nifty / BankNifty P&L" />
-        <StatItem label="BTST Reliability" value={`${performance.btstWinRate.toFixed(1)}%`} isPositive={performance.btstWinRate >= 65} icon={Clock} subtext="Overnight Success Ratio" />
+        <StatItem 
+          label="Index – 30-Day Net Outcome" 
+          value={formatCurrency(performance.indexPnL)} 
+          isPositive={performance.indexPnL >= 0} 
+          icon={Layers} 
+        />
+        <StatItem 
+          label="Overnight Consistency" 
+          value={`${performance.overnightPercent.toFixed(1)}%`} 
+          colorClass={getConsistencyColor(performance.overnightPercent)}
+          icon={Clock}
+        />
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
         <div className="flex items-center justify-between mb-10 relative z-10">
             <div>
-              <h3 className="text-white font-bold flex items-center text-sm uppercase tracking-widest"><BarChart3 size={16} className="mr-3 text-blue-500" />Realized Trend</h3>
+              <h3 className="text-white font-bold flex items-center text-sm uppercase tracking-widest">
+                <BarChart3 size={16} className="mr-3 text-blue-500" />
+                Realized Trend
+              </h3>
               <p className="text-[10px] text-slate-500 mt-1 uppercase font-bold tracking-tighter">14-Day Rolling Realization Curve</p>
-            </div>
-            <div className="text-right">
-                <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">Dataset: {performance.totalTrades} Sample Points</span>
             </div>
         </div>
         
@@ -233,15 +274,20 @@ const Stats: React.FC<{ signals?: (TradeSignal & { sheetIndex?: number })[]; his
   );
 };
 
-const StatItem = ({ label, value, isPositive, subtext, icon: Icon, highlight = false }: { label: string; value: string; isPositive: boolean; subtext?: string; icon: any; highlight?: boolean }) => (
-  <div className={`bg-slate-900 border ${highlight ? 'border-blue-500/30 shadow-[0_0_25px_rgba(59,130,246,0.1)]' : 'border-slate-800'} p-5 rounded-2xl shadow-xl hover:border-slate-700 transition-all group`}>
-    <div className="flex items-center space-x-2 mb-3">
-        <div className={`p-1.5 rounded-lg ${highlight ? 'bg-blue-500/10 text-blue-500' : 'bg-slate-800 text-slate-500'}`}><Icon size={14} /></div>
-        <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{label}</p>
+const StatItem = ({ label, value, isPositive, colorClass, icon: Icon, highlight = false }: { label: string; value: string; isPositive?: boolean; colorClass?: string; icon: any; highlight?: boolean }) => {
+  const finalColorClass = colorClass || (isPositive ? 'text-emerald-400' : 'text-rose-400');
+  
+  return (
+    <div className={`bg-slate-900 border ${highlight ? 'border-blue-500/30 shadow-[0_0_25px_rgba(59,130,246,0.1)]' : 'border-slate-800'} p-5 rounded-2xl shadow-xl hover:border-slate-700 transition-all group relative overflow-hidden`}>
+      <div className="flex items-center space-x-2 mb-3">
+          <div className={`p-1.5 rounded-lg ${highlight ? 'bg-blue-500/10 text-blue-500' : 'bg-slate-800 text-slate-500'}`}><Icon size={14} /></div>
+          <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">{label}</p>
+      </div>
+      <div className="flex items-baseline justify-between">
+        <p className={`text-2xl font-mono font-black tracking-tighter leading-none ${finalColorClass}`}>{value}</p>
+      </div>
     </div>
-    <p className={`text-2xl font-mono font-black tracking-tighter leading-none ${isPositive ? 'text-emerald-400' : 'text-rose-400'}`}>{value}</p>
-    {subtext && <p className="text-[9px] font-bold text-slate-600 uppercase mt-2 tracking-widest opacity-80">{subtext}</p>}
-  </div>
-);
+  );
+};
 
 export default Stats;
