@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { Menu, X, BarChart2, Radio, ShieldAlert, LogOut, FileText, User as UserIcon, Scale, Clock, CheckCircle, AlertCircle, EyeOff, ShieldCheck, List, TrendingUp, TrendingDown, BellRing, Zap, ArrowUpCircle, ExternalLink, Briefcase, BookOpen, Info, Flame } from 'lucide-react';
 import { User, WatchlistItem } from '../types';
@@ -214,7 +213,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
   };
 
   return (
-    <div className={`h-[100dvh] flex flex-col md:flex-row relative overflow-hidden bg-slate-950 ${!isTabFocused ? 'app-protected' : ''}`}>
+    <div className={`h-[100dvh] w-full flex flex-col md:flex-row relative overflow-hidden bg-slate-950 ${!isTabFocused ? 'app-protected' : ''}`}>
       {!isTabFocused && !user?.isAdmin && (
         <div className="fixed inset-0 z-[99999] bg-slate-950/80 backdrop-blur-3xl flex flex-col items-center justify-center text-center p-6">
           <EyeOff size={64} className="text-slate-500 mb-4 animate-pulse" />
@@ -233,7 +232,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
       )}
 
       {/* Mobile Header */}
-      <div className="md:hidden bg-slate-900 border-b border-slate-800 p-4 flex justify-between items-center z-50 shadow-xl flex-shrink-0">
+      <div className="md:hidden bg-slate-900 border-b border-slate-800 p-4 flex justify-between items-center z-50 shadow-xl flex-shrink-0 w-full">
         <div className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-to-tr from-pink-500 to-purple-600 rounded-lg flex items-center justify-center text-white shadow-lg">
                 <Scale size={18} strokeWidth={2.5} />
@@ -245,11 +244,19 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
               </div>
             </div>
         </div>
-        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 bg-slate-800 rounded-lg text-slate-300 relative">
+        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 bg-slate-800 rounded-lg text-slate-300 relative active:scale-95 transition-transform">
           {hasGlobalWatchAlerts && <span className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-ping z-10"></span>}
           {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
       </div>
+
+      {/* Sidebar Overlay for Mobile */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[35] md:hidden transition-opacity duration-300"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
 
       <aside className={`fixed md:relative z-40 top-0 left-0 h-full w-64 bg-slate-900 border-r border-slate-800 transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} flex flex-col shadow-2xl flex-shrink-0`}>
         <div className="p-6 hidden md:flex items-center space-x-3 mb-6">
@@ -259,7 +266,15 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
             <p className="text-[10px] text-purple-400 font-mono uppercase tracking-widest">Secure Terminal</p>
           </div>
         </div>
-        <nav className="flex-1 px-4 overflow-y-auto no-scrollbar">
+        
+        {/* Mobile Sidebar Close Button */}
+        <div className="md:hidden p-4 flex justify-end">
+          <button onClick={() => setIsSidebarOpen(false)} className="p-2 bg-slate-800 rounded-lg text-slate-400">
+            <X size={20} />
+          </button>
+        </div>
+
+        <nav className="flex-1 px-4 overflow-y-auto no-scrollbar pb-8">
           <NavItem page="dashboard" icon={Radio} label="Live Analysis Feed" />
           <NavItem page="insights" icon={Flame} label="Market Insights" isNew />
           <NavItem page="booked" icon={CheckCircle} label="Observed Outcomes" />
@@ -304,31 +319,31 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
           {user?.isAdmin && <div className="mt-4 pt-4 border-t border-slate-800/50"><NavItem page="admin" icon={FileText} label="Admin Panel" /></div>}
         </nav>
         
-        <div className="p-4 border-t border-slate-800">
+        <div className="p-4 border-t border-slate-800 bg-slate-900/50 backdrop-blur-sm">
           <div className="flex items-center mb-4 px-2">
-            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-slate-300 mr-3"><UserIcon size={16} /></div>
+            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-slate-300 mr-3 shrink-0"><UserIcon size={16} /></div>
             <div className="overflow-hidden w-full">
               <p className="text-xs font-bold text-white truncate uppercase">{user?.name}</p>
               <div className="mt-1"><CountdownBadge /></div>
             </div>
           </div>
-          <button onPointerDown={(e) => { e.preventDefault(); onLogout(); }} className="flex items-center justify-center w-full py-2 px-4 rounded-lg bg-slate-800 text-slate-300 hover:bg-rose-900/30 hover:text-rose-400 transition-colors text-[10px] font-bold uppercase tracking-widest"><LogOut size={12} className="mr-2" /> Sign Out</button>
+          <button onClick={onLogout} className="flex items-center justify-center w-full py-2 px-4 rounded-lg bg-slate-800 text-slate-300 hover:bg-rose-900/30 hover:text-rose-400 transition-all text-[10px] font-bold uppercase tracking-widest active:scale-95"><LogOut size={12} className="mr-2" /> Sign Out</button>
         </div>
       </aside>
 
-      <main className="flex-1 h-full overflow-hidden flex flex-col relative z-10">
-        <div className="flex-1 flex overflow-hidden">
-          <div id="app-main-container" className="flex-1 h-full overflow-y-auto bg-slate-950 scroll-smooth p-4 md:p-8">
-              <div className="max-w-5xl mx-auto pb-32">
+      <main className="flex-1 h-full overflow-hidden flex flex-col relative z-10 min-w-0">
+        <div className="flex-1 flex overflow-hidden w-full h-full relative">
+          <div id="app-main-container" className="flex-1 h-full overflow-y-auto bg-slate-950 scroll-smooth px-4 py-6 md:p-8 w-full no-scrollbar">
+              <div className="max-w-5xl mx-auto pb-32 w-full">
                   {children}
               </div>
           </div>
           <GlobalWatchlist watchlist={watchlist} activeWatchlistAlerts={activeWatchlistAlerts} />
         </div>
         
-        <div className="bg-slate-900/95 border-t border-slate-800 p-2 text-center fixed bottom-0 w-full md:w-[calc(100%-16rem)] right-0 backdrop-blur-md z-50 flex flex-col items-center justify-center space-y-1">
-           <div className="text-[9px] text-slate-500 font-mono tracking-tight opacity-70 uppercase px-4">{FOOTER_TEXT}</div>
-           <div className="text-[10px] font-bold text-blue-500/90 tracking-[0.15em] font-mono leading-none pt-0.5">{BRANDING_TEXT}</div>
+        <div className="bg-slate-900/95 border-t border-slate-800 p-2 text-center w-full backdrop-blur-md z-[60] flex flex-col items-center justify-center space-y-1 shrink-0">
+           <div className="text-[9px] text-slate-500 font-mono tracking-tight opacity-70 uppercase px-4 truncate max-w-full">{FOOTER_TEXT}</div>
+           <div className="text-[10px] font-bold text-blue-500/90 tracking-[0.15em] font-mono leading-none pt-0.5 uppercase">{BRANDING_TEXT}</div>
         </div>
       </main>
     </div>
