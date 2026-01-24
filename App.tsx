@@ -10,11 +10,12 @@ import BookedTrades from './pages/BookedTrades';
 import MarketInsights from './pages/MarketInsights';
 import { User, WatchlistItem, TradeSignal, TradeStatus, LogEntry, ChatMessage, InsightData } from './types';
 import { fetchSheetData, updateSheetData } from './services/googleSheetsService';
-import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen, Briefcase, ExternalLink, MessageCircle, ShieldAlert, AlertTriangle, ArrowRight, CheckCircle2, Activity, Flame, ShieldCheck } from 'lucide-react';
+import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen, Briefcase, ExternalLink, MessageCircle, ShieldAlert, AlertTriangle, ArrowRight, CheckCircle2, Activity, Flame, ShieldCheck, Info } from 'lucide-react';
 
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; 
 const SESSION_KEY = 'libra_user_session';
 const DISCLOSURE_KEY = 'libra_risk_accepted';
+const SESSION_ACK_KEY = 'libra_session_acknowledged';
 const POLL_INTERVAL = 8000; 
 const MAJOR_ALERT_DURATION = 15000; 
 const INTEL_ALERT_DURATION = 60000; 
@@ -58,6 +59,10 @@ const App: React.FC = () => {
 
   const [disclosureAccepted, setDisclosureAccepted] = useState(() => {
     return localStorage.getItem(DISCLOSURE_KEY) === 'true';
+  });
+
+  const [sessionAcknowledged, setSessionAcknowledged] = useState(() => {
+    return sessionStorage.getItem(SESSION_ACK_KEY) === 'true';
   });
 
   const [page, setPage] = useState('dashboard');
@@ -414,7 +419,7 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (user && disclosureAccepted) {
+    if (user && disclosureAccepted && sessionAcknowledged) {
         sync(true);
         const poll = setInterval(() => sync(false), POLL_INTERVAL);
         const handleVisibility = () => { if (!document.hidden) sync(false); };
@@ -424,7 +429,7 @@ const App: React.FC = () => {
           document.removeEventListener('visibilitychange', handleVisibility);
         };
     }
-  }, [sync, user, disclosureAccepted]);
+  }, [sync, user, disclosureAccepted, sessionAcknowledged]);
 
   const toggleSound = () => {
     const next = !soundEnabled;
@@ -437,6 +442,11 @@ const App: React.FC = () => {
   const handleAcceptDisclosure = () => {
     localStorage.setItem(DISCLOSURE_KEY, 'true');
     setDisclosureAccepted(true);
+  };
+
+  const handleSessionAck = () => {
+    sessionStorage.setItem(SESSION_ACK_KEY, 'true');
+    setSessionAcknowledged(true);
   };
 
   if (!user) return <Login onLogin={(u) => {
@@ -476,6 +486,12 @@ const App: React.FC = () => {
                         ))}
                     </div>
 
+                    <div className="mt-2 mb-8 p-3 bg-slate-950/40 rounded-xl border border-slate-800/50">
+                        <p className="text-[10px] text-slate-500 leading-relaxed italic">
+                            Source: SEBI study dated January 25, 2023, on "Analysis of Profit and Loss of Individual Traders dealing in equity Futures and Options (F&O) Segment," wherein Aggregate Level findings are based on annual Profit/Loss incurred by individual traders in equity F&O during FY 2021-22.
+                        </p>
+                    </div>
+
                     <button 
                         onClick={handleAcceptDisclosure}
                         className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-5 rounded-2xl transition-all shadow-xl shadow-blue-900/30 flex items-center justify-center text-xs uppercase tracking-[0.2em] group"
@@ -489,14 +505,51 @@ const App: React.FC = () => {
     );
   }
 
+  // Mandatory Session Acknowledgment for Educational Purpose
+  if (!sessionAcknowledged) {
+    return (
+      <div className="fixed inset-0 z-[600] bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl shadow-[0_0_50px_rgba(0,0,0,0.5)] overflow-hidden relative animate-in zoom-in-95 duration-300">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 to-cyan-400"></div>
+          <div className="p-8 text-center">
+            <div className="w-16 h-16 bg-blue-600/10 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-blue-500/20">
+              <BookOpen size={32} className="text-blue-500" />
+            </div>
+            <h3 className="text-xl font-black text-white uppercase tracking-tighter mb-4">Educational Access Only</h3>
+            <div className="bg-slate-950/50 rounded-2xl p-6 border border-slate-800 mb-8">
+              <p className="text-slate-400 text-sm leading-relaxed font-medium">
+                This terminal is established strictly for <span className="text-blue-400 font-black">EDUCATIONAL PURPOSES</span>. 
+                All market insights, signals, and analysis are research-oriented views intended to support 
+                disciplined learning and framework understanding. 
+              </p>
+              <div className="mt-4 pt-4 border-t border-slate-800/50 flex items-center justify-center space-x-2">
+                <ShieldCheck size={14} className="text-emerald-500" />
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">No Financial Advice Provided</span>
+              </div>
+            </div>
+            <button 
+              onClick={handleSessionAck}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-900/30 uppercase tracking-[0.2em] text-xs transition-all active:scale-95 flex items-center justify-center"
+            >
+              <Info size={16} className="mr-3" />
+              I Understand
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Layout 
       user={user} 
       onLogout={() => { 
         localStorage.removeItem(SESSION_KEY); 
         localStorage.removeItem(DISCLOSURE_KEY);
+        sessionStorage.removeItem(SESSION_ACK_KEY);
         setUser(null); 
         setDisclosureAccepted(false);
+        setSessionAcknowledged(false);
       }} 
       currentPage={page} 
       onNavigate={setPage}
