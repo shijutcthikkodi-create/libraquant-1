@@ -1,6 +1,5 @@
-
-import React, { useState, useEffect } from 'react';
-import { ArrowUpRight, ArrowDownRight, Target, Cpu, Edit2, Check, X, TrendingUp, TrendingDown, Clock, ShieldAlert, Zap, AlertTriangle, Trophy, Loader2, History, Briefcase, Activity, Moon, Trash2, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowUpRight, ArrowDownRight, Target, Cpu, Edit2, Check, X, TrendingUp, TrendingDown, Clock, ShieldAlert, Zap, AlertTriangle, Trophy, Loader2, History, Briefcase, Activity, Moon, Trash2, RefreshCw, Lock } from 'lucide-react';
 import { TradeSignal, TradeStatus, OptionType, User } from '../types';
 import { analyzeTradeSignal } from '../services/geminiService';
 
@@ -22,6 +21,17 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
   const [isSavingTrail, setIsSavingTrail] = useState(false);
   const [trailValue, setTrailValue] = useState<string>(signal.trailingSL != null ? Number(signal.trailingSL).toFixed(2) : '');
   const [displayTrail, setDisplayTrail] = useState<number | null | undefined>(signal.trailingSL);
+
+  // DEADLY SYSTEM: Persistent Targets Hit Tracker
+  const [maxTargetsHit, setMaxTargetsHit] = useState<number>(() => {
+    const saved = localStorage.getItem(`libra_max_hit_${signal.id}`);
+    const sheetVal = signal.targetsHit || 0;
+    const initial = saved ? Math.max(parseInt(saved), sheetVal) : sheetVal;
+    return initial;
+  });
+
+  // Track the most recently hit target index to trigger the "Fire Blast" Visual Effect
+  const [newlyHitTargetIndex, setNewlyHitTargetIndex] = useState<number | null>(null);
   
   useEffect(() => {
     if (!isEditingTrail) {
@@ -29,6 +39,21 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
       setTrailValue(signal.trailingSL != null ? Number(signal.trailingSL).toFixed(2) : '');
     }
   }, [signal.trailingSL, isEditingTrail]);
+
+  // Update maxTargetsHit if sheet reports a higher value and trigger animation
+  useEffect(() => {
+    const currentSheetHit = signal.targetsHit || 0;
+    if (currentSheetHit > maxTargetsHit) {
+      // Trigger "FIRE BLAST" encouraging animation for the newly hit level
+      setNewlyHitTargetIndex(currentSheetHit - 1);
+      setMaxTargetsHit(currentSheetHit);
+      localStorage.setItem(`libra_max_hit_${signal.id}`, currentSheetHit.toString());
+      
+      // Clear specific animation index after it plays to allow re-trigger if needed
+      const timer = setTimeout(() => setNewlyHitTargetIndex(null), 3000); // 3s buffer for 1.4s animation
+      return () => clearTimeout(timer);
+    }
+  }, [signal.targetsHit, signal.id, maxTargetsHit]);
 
   const isBuy = signal.action === 'BUY';
   const isActive = signal.status === TradeStatus.ACTIVE || signal.status === TradeStatus.PARTIAL;
@@ -59,17 +84,6 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
       case TradeStatus.EXITED: return 'bg-slate-800 text-slate-500 border-slate-700';
       case TradeStatus.STOPPED: return 'bg-rose-500/20 text-rose-400 border-rose-500/30';
       default: return 'bg-slate-800 text-slate-400';
-    }
-  };
-
-  const getTargetStyle = (index: number) => {
-    const isHit = isAllTarget || (signal.targetsHit || 0) > index;
-    if (!isHit) return 'bg-slate-950/40 border-slate-700/50 text-slate-300';
-    switch (index) {
-      case 0: return 'bg-[#10b981]/20 border-[#10b981] text-[#10b981] shadow-[0_0_12px_rgba(16,185,129,0.15)]';
-      case 1: return 'bg-[#059669]/40 border-[#059669] text-white shadow-[0_0_15px_rgba(5,150,105,0.25)]';
-      case 2: return 'bg-[#047857]/60 border-[#047857] text-white font-black shadow-[0_0_20px_rgba(4,120,87,0.35)]';
-      default: return 'bg-emerald-500/30 border-emerald-400 text-emerald-200';
     }
   };
 
@@ -293,18 +307,41 @@ const SignalCard: React.FC<SignalCardProps> = ({ signal, user, highlights, isMaj
                 <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Projected Resistance Level</span>
             </div>
         </div>
-        <div className={`grid grid-cols-3 gap-2 ${!isExited && (highlights?.has('targetsHit') || highlights?.has('blast')) ? 'animate-box-blink' : ''}`}>
+        
+        <div className={`grid grid-cols-3 gap-2`}>
             {signal.targets?.map((t, idx) => {
-                const isHit = isAllTarget || (signal.targetsHit || 0) > idx;
+                const isHit = isAllTarget || maxTargetsHit > idx;
+                const isNewlyHit = newlyHitTargetIndex === idx;
+                
+                if (isHit) {
+                  // TESTED STATE: Light green background with shimmer and larger checkmarks
+                  return (
+                    <div key={idx} className={`relative rounded-lg px-2 py-3 text-center border overflow-hidden transition-all duration-700 ${isNewlyHit ? 'animate-fire-blast z-10 scale-105' : 'bg-emerald-500/15 border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.15)]'}`}>
+                        {/* Subtle shimmer effect for all hit targets */}
+                        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-emerald-400/10 to-transparent bg-[length:200%_100%] animate-success-shimmer pointer-events-none" />
+                        
+                        <div className="absolute top-1 right-1">
+                          <Lock size={8} className="text-emerald-500 opacity-50" />
+                        </div>
+                        <p className="text-[8px] font-black text-emerald-500 uppercase mb-0.5 tracking-tighter">LVL {idx + 1} TESTED</p>
+                        <p className="text-sm font-mono font-black text-white">{Number(t).toFixed(1)}</p>
+                        <div className="flex items-center justify-center mt-1.5 space-x-1.5">
+                          <Check size={16} strokeWidth={6} className="text-emerald-500 shrink-0" />
+                          <span className="text-[8px] font-black text-emerald-600 uppercase tracking-tight">ARCHIVED</span>
+                        </div>
+                    </div>
+                  );
+                }
+
                 return (
-                  <div key={idx} className={`rounded px-2 py-2 text-center border transition-all duration-700 ${getTargetStyle(idx)}`}>
-                      <p className={`text-[9px] font-black uppercase mb-0.5 ${isHit ? 'text-white' : 'text-slate-400'}`}>LVL {idx + 1}</p>
-                      <p className={`text-sm font-mono font-black ${isHit && isActive ? 'animate-pulse' : ''}`}>{Number(t).toFixed(1)}</p>
-                      {isHit && <Check size={10} strokeWidth={3} className="mx-auto mt-1" />}
+                  <div key={idx} className="rounded px-2 py-2 text-center border transition-all duration-500 bg-slate-950/40 border-slate-700/50 text-slate-300">
+                      <p className="text-[9px] font-black uppercase mb-0.5 text-slate-400">LVL {idx + 1}</p>
+                      <p className="text-sm font-mono font-black">{Number(t).toFixed(1)}</p>
                   </div>
                 );
             })}
         </div>
+        
         {signal.comment && (
             <div className={`mt-4 p-3 rounded-lg border transition-colors ${!isExited && highlights?.has('comment') ? 'animate-box-blink' : ''} ${isSLHit || isTSLHit ? 'bg-rose-950/20 border-rose-500/30' : isAllTarget ? 'bg-emerald-950/20 border-emerald-500/30' : (isBTST ? 'bg-amber-950/20 border-amber-500/30' : 'bg-slate-950/50 border-slate-800/50')}`}>
                 <p className={`text-xs leading-relaxed ${isSLHit || isTSLHit ? 'text-rose-400 font-bold' : isAllTarget ? 'text-emerald-400 font-bold italic' : (isBTST ? 'text-amber-400 font-bold' : 'text-slate-400')}`}>

@@ -26,6 +26,9 @@
               'box-blink': 'box-blink 0.4s ease-in-out infinite',
               'card-pulse': 'card-pulse 1.2s ease-in-out infinite',
               'notification': 'notification-slide 5s ease-in-out forwards',
+              'target-success': 'target-hit-success 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards',
+              'success-shimmer': 'success-shimmer 2s linear infinite',
+              'fire-blast': 'fire-blast-double 1.4s cubic-bezier(0.25, 1, 0.5, 1) forwards',
             }
           }
         }
@@ -93,6 +96,31 @@
         15% { transform: translateY(0) scale(1); opacity: 1; }
         85% { transform: translateY(0) scale(1); opacity: 1; }
         100% { transform: translateY(-100%) scale(0.9); opacity: 0; }
+      }
+
+      @keyframes target-hit-success {
+        0% { transform: scale(1); background-color: rgba(16, 185, 129, 0.2); border-color: #10b981; box-shadow: 0 0 0px rgba(16, 185, 129, 0); }
+        20% { transform: scale(1.15); background-color: rgba(16, 185, 129, 0.8); border-color: #34d399; box-shadow: 0 0 40px rgba(16, 185, 129, 0.6); }
+        100% { transform: scale(1); background-color: #020617; border-color: #10b981; box-shadow: 0 0 15px rgba(16, 185, 129, 0.2); }
+      }
+
+      @keyframes fire-blast-double {
+        0% { transform: scale(1); background-color: #020617; box-shadow: 0 0 0px transparent; }
+        /* Blast 1 */
+        15% { transform: scale(1.25); background-color: #facc15; box-shadow: 0 0 80px 25px rgba(234, 179, 8, 0.9); }
+        35% { transform: scale(1.1); background-color: #10b981; box-shadow: 0 0 30px 10px rgba(16, 185, 129, 0.6); }
+        45% { transform: scale(1); background-color: rgba(16, 185, 129, 0.3); }
+        /* GAP - Pause in normal state */
+        55% { transform: scale(1); background-color: rgba(16, 185, 129, 0.3); }
+        /* Blast 2 */
+        70% { transform: scale(1.25); background-color: #facc15; box-shadow: 0 0 80px 25px rgba(234, 179, 8, 0.9); }
+        90% { transform: scale(1.1); background-color: #10b981; box-shadow: 0 0 30px 10px rgba(16, 185, 129, 0.6); }
+        100% { transform: scale(1); background-color: rgba(16, 185, 129, 0.2); border-color: #10b981; box-shadow: 0 0 20px rgba(16, 185, 129, 0.3); }
+      }
+
+      @keyframes success-shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
       }
 
       .status-stamp {
