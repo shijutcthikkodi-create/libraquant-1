@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -258,11 +257,9 @@ const App: React.FC = () => {
         const now = Date.now();
         const expirationTime = now + MAJOR_ALERT_DURATION;
 
-        // Reconcile signals: Ensure closed signals stay cached for smooth UI transitions
         const reconciledSignals = data.signals.map(s => {
           const isClosed = s.status === TradeStatus.EXITED || s.status === TradeStatus.STOPPED || s.status === TradeStatus.ALL_TARGET;
           if (deadSignalsRef.current.has(s.id)) {
-            // Keep the cached data but update the index if it changed
             return { ...deadSignalsRef.current.get(s.id)!, sheetIndex: s.sheetIndex };
           }
           if (isClosed) deadSignalsRef.current.set(s.id, s);
@@ -368,7 +365,6 @@ const App: React.FC = () => {
         setInsights([...(data.insights || [])]);
         setConnectionStatus('connected');
       } else {
-        // Fallback for null data (sync error)
         setConnectionStatus('error');
       }
     } catch (err) {
@@ -517,10 +513,7 @@ const App: React.FC = () => {
           <button onClick={initAudio} className="w-full max-w-xs bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-900/40 uppercase tracking-[0.2em] text-xs transition-all active:scale-95">Activate Live Feed</button>
         </div>
       )}
-      
-      {/* Floating Action Controls Container */}
       <div className="fixed top-4 right-4 z-[100] flex flex-col items-end space-y-3">
-        {/* Sync Status Badge */}
         <div className={`bg-slate-900/95 backdrop-blur-md px-3 py-2 rounded-xl text-[10px] font-bold border shadow-2xl flex items-center ${connectionStatus === 'error' ? 'border-rose-500 bg-rose-950/20' : 'border-slate-800'}`}>
           <div className="flex flex-col items-start mr-3">
               <span className="text-[9px] text-slate-500 uppercase tracking-tighter leading-none mb-1">Terminal Link</span>
@@ -529,15 +522,13 @@ const App: React.FC = () => {
                  <span className={`${connectionStatus === 'error' ? 'text-rose-400' : 'text-white'} font-mono`}>{connectionStatus === 'error' ? 'RETRYING...' : lastSyncTime}</span>
               </div>
           </div>
-          <button onClick={() => sync(true)} className="p-1.5 rounded-lg bg-slate-800 text-blue-400 border border-blue-500/20 hover:bg-slate-700 transition-colors"><Database size={14} /></button>
+          <button onClick={() => sync(true)} className="p-1.5 rounded-lg bg-slate-800 text-blue-400 border border-blue-500/20"><Database size={14} /></button>
         </div>
-
-        {/* Audio Toggle Pill */}
-        <button onClick={toggleSound} className={`p-4 rounded-full border shadow-2xl transition-all active:scale-90 flex items-center justify-center ${soundEnabled ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400 shadow-cyan-500/10' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+        
+        <button onClick={toggleSound} className={`p-4 rounded-full border shadow-2xl transition-all active:scale-90 ${soundEnabled ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400 shadow-cyan-500/10' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
           {soundEnabled ? <Volume2 size={32} /> : <VolumeX size={32} />}
         </button>
 
-        {/* SMALL FLOATING DEMAT BADGE - Right below Sound Toggle */}
         <a 
           href="https://oa.mynt.in/?ref=ZTN348" 
           target="_blank" 
@@ -563,7 +554,7 @@ const App: React.FC = () => {
       </a>
 
       {page === 'dashboard' && <Dashboard watchlist={watchlist} signals={signals} messages={messages} user={user} granularHighlights={granularHighlights} activeMajorAlerts={activeMajorAlerts} activeWatchlistAlerts={activeWatchlistAlerts} activeIntelAlert={activeIntelAlert} onSignalUpdate={handleSignalUpdate} />}
-      {page === 'insights' && <MarketInsights insights={insights} />}
+      {page === 'insights' && <MarketInsights insights={insights} watchlist={watchlist} />}
       {page === 'booked' && <BookedTrades signals={signals} historySignals={historySignals} user={user} granularHighlights={granularHighlights} onSignalUpdate={handleSignalUpdate} />}
       {page === 'stats' && <Stats signals={signals} historySignals={historySignals} />}
       {page === 'rules' && <Rules />}

@@ -1,15 +1,14 @@
-
-import React, { useState, useMemo, useEffect } from 'react';
-import { TrendingUp, Activity, BarChart3, Target, Clock, ShieldCheck, Flame, Share2, ArrowRightLeft, Zap, Landmark } from 'lucide-react';
-import { InsightData } from '../types';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { TrendingUp, Activity, BarChart3, Target, Clock, ShieldCheck, Flame } from 'lucide-react';
+import { InsightData, WatchlistItem } from '../types';
 
 interface MarketInsightsProps {
   insights?: InsightData[];
+  watchlist?: WatchlistItem[];
 }
 
 type TabID = 'TREND' | 'DOMINANCE' | 'FLOW';
 
-// Helper for robust sentiment checking
 const isBullish = (val: any): boolean => {
   const s = String(val || '').trim().toUpperCase();
   return ['BULLISH', 'BULL', 'BUY', 'UP', 'ACC'].includes(s);
@@ -25,78 +24,75 @@ const isNeutral = (val: any): boolean => {
   return ['NEUTRAL', 'NUTRAL', 'NEUT', 'SIDE', 'FLAT', 'BAL', 'SIDEWAYS', 'INDECISION'].includes(s);
 };
 
-// Helper for Flow status
 const isHfr = (val: any): boolean => {
   const s = String(val || '').trim().toUpperCase();
   return ['H-FR', 'HFR', 'HIGH FREQUENCY', 'FAST'].includes(s);
 };
 
-// Helper to split symbol and price
-const parseSymbol = (symbolStr: string) => {
-  if (symbolStr.includes(',')) {
-    const [name, price] = symbolStr.split(',').map(s => s.trim());
-    return { name, price };
-  }
-  return { name: symbolStr, price: null };
+const formatOnlyDate = (dateStr?: string) => {
+  if (!dateStr) return '';
+  return dateStr.split(/[ T]/)[0];
 };
 
-const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
+const parseSymbol = (symbolStr: string) => {
+  if (symbolStr.includes(',')) {
+    const [name] = symbolStr.split(',').map(s => s.trim());
+    return { name };
+  }
+  return { name: symbolStr };
+};
+
+const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [], watchlist = [] }) => {
   const [activeTab, setActiveTab] = useState<TabID>('TREND');
   const [highlightedSymbol, setHighlightedSymbol] = useState<string | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const tabs = [
-    { id: 'TREND', label: 'Trend', icon: TrendingUp },
-    { id: 'DOMINANCE', label: 'Dominance', icon: BarChart3 },
-    { id: 'FLOW', label: 'Flow', icon: Activity }
+    { id: 'TREND' as TabID, label: 'Trend', icon: TrendingUp },
+    { id: 'DOMINANCE' as TabID, label: 'Dominance', icon: BarChart3 },
+    { id: 'FLOW' as TabID, label: 'Flow', icon: Activity }
   ];
 
-  const trendData = useMemo(() => insights.filter(i => !!i.sentiment), [insights]);
-  const dominanceData = useMemo(() => insights.filter(i => !!i.category && !!i.sentiment), [insights]);
-  const flowData = useMemo(() => insights.filter(i => !!i.pattern || !!i.phase), [insights]);
-
-  // Check if an asset exists in multiple tabs
-  const getTabLink = (symbol: string, currentTab: TabID): TabID | null => {
-    const { name } = parseSymbol(symbol);
-    if (currentTab === 'TREND') {
-      if (dominanceData.some(d => parseSymbol(d.symbol).name === name)) return 'DOMINANCE';
-      if (flowData.some(f => parseSymbol(f.symbol).name === name)) return 'FLOW';
-    } else {
-      if (trendData.some(t => parseSymbol(t.symbol).name === name)) return 'TREND';
-    }
-    return null;
-  };
+  const trendData = useMemo(() => insights.filter(i => i.type === 'TREND' || !!i.sentiment), [insights]);
+  const dominanceData = useMemo(() => insights.filter(i => i.type === 'DOMINANCE' || (!!i.category && !!i.sentiment)), [insights]);
+  const flowData = useMemo(() => insights.filter(i => i.type === 'FLOW' || !!i.pattern || !!i.phase), [insights]);
 
   const handleAssetClick = (symbol: string) => {
-    const targetTab = getTabLink(symbol, activeTab);
-    if (targetTab) {
-      const { name } = parseSymbol(symbol);
-      setHighlightedSymbol(name);
-      setActiveTab(targetTab);
-      
-      // We need to wait for the tab to switch and elements to render before scrolling
-      setTimeout(() => {
-        const elementId = `${targetTab.toLowerCase()}-${name}`;
-        const element = document.getElementById(elementId);
-        const container = document.getElementById('app-main-container');
-        
-        if (element && container) {
-          const offset = 120; // Space for the header
-          const bodyRect = container.getBoundingClientRect().top;
-          const elementRect = element.getBoundingClientRect().top;
-          const elementPosition = elementRect - bodyRect;
-          const offsetPosition = elementPosition + container.scrollTop - offset;
-
-          container.scrollTo({
-            top: offsetPosition,
-            behavior: 'smooth'
-          });
-        }
-      }, 100);
-
-      // Remove highlight after animation
-      setTimeout(() => setHighlightedSymbol(null), 3000);
+    // Clear any existing timeout
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
     }
+
+    setHighlightedSymbol(symbol);
+    // Cycle only between Trend and Dominance
+    setActiveTab(prev => prev === 'TREND' ? 'DOMINANCE' : 'TREND');
+
+    // Set timeout to clear highlight after 2 blinks (0.8s * 2 = 1600ms)
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedSymbol(null);
+    }, 1600);
   };
+
+  // Effect to handle automatic scrolling when asset is selected across tabs
+  useEffect(() => {
+    if (highlightedSymbol && (activeTab === 'TREND' || activeTab === 'DOMINANCE')) {
+      const timer = setTimeout(() => {
+        const elementId = `${activeTab.toLowerCase()}-${highlightedSymbol}`;
+        const element = document.getElementById(elementId);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTab, highlightedSymbol]);
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
+    };
+  }, []);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700 pb-32">
@@ -121,7 +117,10 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as TabID)}
+              onClick={() => {
+                setActiveTab(tab.id);
+                setHighlightedSymbol(null); // Clear highlight on manual tab change
+              }}
               className={`flex flex-col sm:flex-row items-center justify-center py-3 px-2 rounded-[16px] transition-all duration-300 group relative overflow-hidden ${
                 activeTab === tab.id 
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' 
@@ -146,12 +145,10 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
               return (
                 <TrendStrengthCard 
                   key={i} 
-                  symbol={d.symbol} 
-                  sentiment={d.sentiment} 
-                  strength={d.strength ?? 50} 
-                  canLink={!!getTabLink(d.symbol, 'TREND')}
-                  onLink={() => handleAssetClick(d.symbol)}
+                  insight={d}
+                  watchlist={watchlist}
                   isHighlighted={highlightedSymbol === name}
+                  onSelect={() => handleAssetClick(name)}
                 />
               );
             }) : (
@@ -169,12 +166,9 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
               return (
                 <DominanceLogicRow 
                   key={i} 
-                  symbol={d.symbol} 
-                  category={d.category} 
-                  sentiment={d.sentiment} 
-                  canLink={!!getTabLink(d.symbol, 'DOMINANCE')}
-                  onLink={() => handleAssetClick(d.symbol)}
+                  insight={d}
                   isHighlighted={highlightedSymbol === name}
+                  onSelect={() => handleAssetClick(name)}
                 />
               );
             }) : (
@@ -192,12 +186,7 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
               return (
                 <FlowPatternCard 
                   key={i} 
-                  symbol={d.symbol} 
-                  pattern={d.pattern} 
-                  phase={d.phase} 
-                  sentiment={d.sentiment} 
-                  canLink={!!getTabLink(d.symbol, 'FLOW')}
-                  onLink={() => handleAssetClick(d.symbol)}
+                  insight={d}
                   isHighlighted={highlightedSymbol === name}
                 />
               );
@@ -216,70 +205,102 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [] }) => {
 /* --- TAB COMPONENTS --- */
 
 interface TrendStrengthCardProps {
-  symbol: string;
-  sentiment?: string;
-  strength: number;
-  canLink?: boolean;
-  onLink?: () => void;
+  insight: InsightData;
+  watchlist?: WatchlistItem[];
   isHighlighted?: boolean;
+  onSelect?: () => void;
 }
 
-const TrendStrengthCard: React.FC<TrendStrengthCardProps> = ({ symbol, sentiment, strength, canLink, onLink, isHighlighted }) => {
-  const { name, price } = parseSymbol(symbol);
+const TrendStrengthCard: React.FC<TrendStrengthCardProps> = ({ insight, watchlist = [], isHighlighted, onSelect }) => {
+  const { symbol, sentiment, strength = 50, viewOrigin, cmp: directCmp, date } = insight;
+  const { name } = parseSymbol(symbol);
+  
   const isBull = isBullish(sentiment);
   const isBear = isBearish(sentiment);
   const isNeut = isNeutral(sentiment);
   const status = isBull ? "Active Buyers" : isBear ? "Active Sellers" : isNeut ? "Consolidation" : "Neutral";
   const displaySentiment = isBull ? 'Bullish' : isBear ? 'Bearish' : isNeut ? 'Neutral' : (sentiment || 'Monitoring');
   
+  const watchItem = watchlist.find(w => w.symbol.toUpperCase().includes(name.toUpperCase()));
+  const originPrice = viewOrigin || null; 
+  const currentPrice = directCmp || (watchItem ? watchItem.price : null);
+  const priceDiff = (currentPrice !== null && originPrice !== null) ? (currentPrice - originPrice) : null;
+  const cleanDate = formatOnlyDate(date);
+
+  const isPositiveOutcome = isBear 
+    ? (priceDiff !== null && priceDiff <= 0) 
+    : (priceDiff !== null && priceDiff >= 0);
+
   return (
     <div 
       id={`trend-${name}`}
-      onClick={onLink}
-      className={`bg-slate-900 border rounded-2xl p-4 shadow-xl relative overflow-hidden group transition-all duration-500 
-        ${canLink ? 'cursor-pointer hover:bg-slate-800/80' : ''}
-        ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-500/20 animate-box-glow scale-[1.02] z-10' : 'border-slate-800'}
+      onClick={onSelect}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && onSelect?.()}
+      className={`bg-slate-900 border rounded-2xl p-4 shadow-xl relative overflow-hidden transition-all duration-500 cursor-pointer group/card
+        ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-500/20 animate-box-glow scale-[1.02] z-10' : 'border-slate-800 hover:border-slate-700 hover:bg-slate-800/40'}
       `}
     >
-      {canLink && (
-        <div className="absolute top-1.5 right-10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1 bg-blue-500/10 px-1.5 py-0.5 rounded-full border border-blue-500/20">
-          <ArrowRightLeft size={8} className="text-blue-400" />
-          <span className="text-[7px] font-black text-blue-400 uppercase tracking-widest">View Map</span>
-        </div>
-      )}
-
-      {isHighlighted && (
-        <div className="absolute top-1.5 left-1.5 flex items-center space-x-1.5 bg-blue-600 px-1.5 py-0.5 rounded-full border border-white/20 shadow-lg">
-          <Zap size={8} className="text-white animate-pulse" />
-          <span className="text-[7px] font-black text-white uppercase tracking-widest">Quantum Focus</span>
-        </div>
-      )}
-
-      <div className="flex justify-between items-start mb-3">
-        <div className="flex flex-col">
-          <div className="flex items-baseline space-x-2">
-            <span className="text-lg font-black text-white tracking-tighter font-mono leading-none">{name}</span>
-          </div>
-          {price && (
-            <div className="mt-1 flex items-center space-x-2">
-              <span className="text-[7px] font-black text-slate-500 uppercase tracking-widest">View Origin</span>
-              <span className="text-[10px] font-mono font-bold text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">₹{price}</span>
+      <div className="flex justify-between items-start mb-4 pointer-events-none">
+        <div className="flex flex-col w-full">
+          <div className="flex items-center justify-between w-full">
+            <div className="flex items-center space-x-2">
+              <span className="text-lg font-black text-white tracking-tighter font-mono leading-none uppercase group-hover/card:text-blue-400 transition-colors">
+                {name}
+              </span>
+              {cleanDate && (
+                <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded bg-slate-800 border border-slate-700">
+                    <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">{cleanDate}</span>
+                </div>
+              )}
             </div>
-          )}
-          <div className="flex items-center space-x-1.5 mt-1.5">
-            <span className={`text-[9px] font-black uppercase tracking-widest ${isBull ? 'text-emerald-500' : isBear ? 'text-rose-500' : isNeut ? 'text-blue-400' : 'text-slate-500'}`}>{displaySentiment}</span>
-            {canLink && <Share2 size={8} className="text-blue-500/40" />}
+            
+            {originPrice !== null && (
+              <div className="flex items-center space-x-1.5 bg-slate-950/50 px-2 py-0.5 rounded-lg border border-slate-800">
+                <span className="text-[7px] font-black text-slate-500 uppercase tracking-widest">FROM-</span>
+                <span className="text-[10px] font-mono font-black text-slate-200">₹{originPrice.toLocaleString('en-IN')}</span>
+              </div>
+            )}
           </div>
-        </div>
-        <div className="text-right">
-          <div className="flex items-center justify-end space-x-1.5">
-            <span className={`text-[9px] font-black uppercase tracking-widest ${isBull ? 'text-emerald-400' : isBear ? 'text-rose-400' : isNeut ? 'text-blue-300' : 'text-slate-400'}`}>{status}</span>
-            <div className={`w-1.5 h-1.5 rounded-full ${isBull ? 'bg-emerald-500' : isBear ? 'bg-rose-500' : isNeut ? 'bg-blue-500' : 'bg-slate-500'} animate-pulse`} />
+          
+          <div className="mt-2 flex items-center justify-between border-t border-slate-800/30 pt-2">
+            <div className="flex items-center space-x-2">
+              <span className={`text-[10px] font-black uppercase tracking-widest ${isBull ? 'text-emerald-500' : isBear ? 'text-rose-500' : isNeut ? 'text-blue-400' : 'text-slate-500'}`}>
+                {displaySentiment}
+              </span>
+              <div className={`w-1.5 h-1.5 rounded-full ${isBull ? 'bg-emerald-500' : isBear ? 'bg-rose-500' : isNeut ? 'bg-blue-500' : 'bg-slate-500'} animate-pulse`} />
+            </div>
+            <span className={`text-[9px] font-black uppercase tracking-tighter ${isBull ? 'text-emerald-400/80' : isBear ? 'text-rose-400/80' : isNeut ? 'text-blue-300/80' : 'text-slate-500'}`}>
+              {status}
+            </span>
+          </div>
+          
+          <div className="mt-4 flex flex-wrap gap-x-3 gap-y-2">
+            {currentPrice !== null && (
+              <div className="flex items-center space-x-1.5 bg-blue-900/10 px-2 py-1 rounded-lg border border-blue-500/10">
+                <span className="text-[7px] font-black text-blue-500 uppercase tracking-widest">LIVE-</span>
+                <span className="text-[10px] font-mono font-black text-white">₹{currentPrice.toLocaleString('en-IN')}</span>
+              </div>
+            )}
+
+            {priceDiff !== null && (
+              <div className={`flex items-center space-x-1.5 px-2 py-1 rounded-lg border ${
+                isPositiveOutcome 
+                  ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' 
+                  : 'bg-rose-500/5 border-rose-500/20 text-rose-400'
+              }`}>
+                <span className="text-[7px] font-black uppercase tracking-widest opacity-60">DIFF-</span>
+                <span className="text-[10px] font-mono font-black">
+                  {priceDiff >= 0 ? '+' : ''}{priceDiff.toLocaleString('en-IN', { minimumFractionDigits: 1 })}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
       
-      <div className="relative h-4 bg-slate-950 rounded-full border border-slate-800 p-0.5 flex">
+      <div className="relative h-4 bg-slate-950 rounded-full border border-slate-800 p-0.5 flex pointer-events-none">
         <div 
           className={`h-full rounded-full transition-all duration-1000 ease-out shadow-lg ${
             isBull ? 'bg-gradient-to-r from-emerald-600 to-emerald-400 shadow-emerald-500/20' : 
@@ -300,20 +321,20 @@ const TrendStrengthCard: React.FC<TrendStrengthCardProps> = ({ symbol, sentiment
 };
 
 interface DominanceLogicRowProps {
-  symbol: string;
-  category?: string;
-  sentiment?: string; 
-  canLink?: boolean;
-  onLink?: () => void;
+  insight: InsightData;
   isHighlighted?: boolean;
+  onSelect?: () => void;
 }
 
-const DominanceLogicRow: React.FC<DominanceLogicRowProps> = ({ symbol, category, sentiment, canLink, onLink, isHighlighted }) => {
-  const { name, price } = parseSymbol(symbol);
+const DominanceLogicRow: React.FC<DominanceLogicRowProps> = ({ insight, isHighlighted, onSelect }) => {
+  const { symbol, category, sentiment, viewOrigin, date } = insight;
+  const { name } = parseSymbol(symbol);
+  const originPrice = viewOrigin || null;
   const normCategory = String(category || '').trim().toUpperCase();
   const isBull = isBullish(sentiment);
   const isBear = isBearish(sentiment);
   const isNeut = isNeutral(sentiment);
+  const cleanDate = formatOnlyDate(date);
   
   let status = "Balanced";
   let colorTheme = "blue";
@@ -343,25 +364,29 @@ const DominanceLogicRow: React.FC<DominanceLogicRowProps> = ({ symbol, category,
   return (
     <div 
       id={`dominance-${name}`}
-      onClick={onLink}
-      className={`bg-slate-900 border rounded-2xl p-3 flex items-center justify-between shadow-md transition-all duration-500 group 
-        ${canLink ? 'cursor-pointer hover:bg-slate-800' : 'hover:bg-slate-800/50'}
-        ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-500/20 animate-box-glow scale-[1.01] z-10' : 'border-slate-800'}
+      onClick={onSelect}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => e.key === 'Enter' && onSelect?.()}
+      className={`bg-slate-900 border rounded-2xl p-3 flex items-center justify-between shadow-md transition-all duration-500 cursor-pointer group/card
+        ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-500/20 animate-box-glow scale-[1.01] z-10' : 'border-slate-800 hover:border-slate-700 hover:bg-slate-800/40'}
       `}
     >
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center space-x-3 pointer-events-none">
         <div className={`w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400 font-mono font-black border border-slate-700 text-[10px]`}>
           {name.substring(0, 2).toUpperCase()}
         </div>
         <div>
           <div className="flex items-center space-x-1.5">
-            <h4 className="text-sm font-black text-white uppercase tracking-tight font-mono leading-none">{name}</h4>
-            {canLink && <ArrowRightLeft size={8} className="text-blue-500 animate-pulse" />}
+            <span className="text-sm font-black text-white uppercase tracking-tight font-mono leading-none group-hover/card:text-blue-400 transition-colors">
+              {name}
+            </span>
+            {cleanDate && <span className="text-[7px] font-black text-slate-600 uppercase tracking-widest">{cleanDate}</span>}
           </div>
-          {price && (
+          {originPrice !== null && (
             <div className="flex items-center space-x-1.5 mt-0.5">
-              <span className="text-[6px] font-black text-slate-500 uppercase tracking-widest">Origin</span>
-              <span className="text-[9px] font-mono font-bold text-slate-400">₹{price}</span>
+              <span className="text-[6px] font-black text-slate-500 uppercase tracking-widest">FROM-</span>
+              <span className="text-[9px] font-mono font-bold text-slate-400">₹{originPrice.toLocaleString('en-IN')}</span>
             </div>
           )}
           <span className={`text-[8px] font-black uppercase tracking-widest ${isBull ? 'text-emerald-500' : isBear ? 'text-rose-500' : 'text-blue-400'}`}>
@@ -370,7 +395,7 @@ const DominanceLogicRow: React.FC<DominanceLogicRowProps> = ({ symbol, category,
         </div>
       </div>
       
-      <div className="flex-1 flex justify-center">
+      <div className="flex-1 flex justify-center pointer-events-none">
         <div className={`px-4 py-1 rounded-full border transition-all shadow-inner font-black text-[9px] uppercase tracking-widest ${
           colorTheme === 'rose' ? 'bg-slate-950 border-rose-500/40 text-rose-400' :
           colorTheme === 'emerald' ? 'bg-slate-950 border-emerald-500/40 text-emerald-400' :
@@ -380,42 +405,36 @@ const DominanceLogicRow: React.FC<DominanceLogicRowProps> = ({ symbol, category,
         </div>
       </div>
 
-      <div className="flex items-center space-x-2 text-right min-w-[100px]">
+      <div className="flex items-center space-x-2 text-right min-w-[100px] pointer-events-none">
         <span className={`text-[9px] font-black uppercase tracking-tighter ${textClasses[colorTheme]}`}>
           {status}
         </span>
-        <Target size={12} className="text-slate-700 group-hover:text-blue-500 transition-colors" />
+        <Target size={12} className="text-slate-700 group-hover/card:text-blue-500 transition-colors" />
       </div>
     </div>
   );
 };
 
 interface FlowPatternCardProps {
-  symbol: string;
-  pattern?: string;
-  phase?: string;
-  sentiment?: string;
-  canLink?: boolean;
-  onLink?: () => void;
+  insight: InsightData;
   isHighlighted?: boolean;
 }
 
-const FlowPatternCard: React.FC<FlowPatternCardProps> = ({ symbol, pattern, phase, sentiment, canLink, onLink, isHighlighted }) => {
-  const { name, price } = parseSymbol(symbol);
+const FlowPatternCard: React.FC<FlowPatternCardProps> = ({ insight, isHighlighted }) => {
+  const { symbol, pattern, phase, sentiment, viewOrigin, date } = insight;
+  const { name } = parseSymbol(symbol);
+  const originPrice = viewOrigin || null;
+  const cleanDate = formatOnlyDate(date);
+  
   const isAcc = isBullish(phase) || isBullish(pattern);
   const isDis = isBearish(phase) || isBearish(pattern);
   const isNeut = isNeutral(phase) || isNeutral(pattern);
   const isTrendNeut = isNeutral(sentiment);
   const isHFR = isHfr(pattern) || isHfr(phase);
 
-  // Labels
   const displayPattern = isHFR ? 'HIGH FREQUENCY' : (pattern || 'QUANTUM').toUpperCase();
   const subTitle = isTrendNeut ? "Cautious Bias" : isAcc ? "Accumulation" : isDis ? "Distribution" : isNeut ? "Consolidation" : (isHFR ? "HIGH FREQUENCY" : (phase || "Monitoring"));
-  
-  // Logic Implementation for Status
   const status = isTrendNeut ? "Cautious" : (isAcc || isDis) ? "Active Option Sellers" : (isHFR ? "Active Scalpers" : isNeut ? "Range Bound" : "Scanning Flow");
-  
-  // Color Selection
   const colorTheme = isTrendNeut ? "amber" : isAcc ? "emerald" : isDis ? "rose" : "blue";
 
   const textClasses: Record<string, string> = {
@@ -435,22 +454,26 @@ const FlowPatternCard: React.FC<FlowPatternCardProps> = ({ symbol, pattern, phas
   return (
     <div 
       id={`flow-${name}`}
-      onClick={onLink}
       className={`bg-slate-900 border rounded-2xl p-4 shadow-xl transition-all duration-500 flex flex-col h-full group 
-        ${canLink ? 'cursor-pointer hover:bg-slate-800' : 'hover:border-slate-700'}
         ${isHighlighted ? 'border-blue-500 ring-2 ring-blue-500/20 animate-box-glow scale-[1.01] z-10' : 'border-slate-800'}
       `}
     >
       <div className="flex justify-between items-start mb-4">
         <div>
           <div className="flex items-center space-x-1.5">
-            <h4 className="text-lg font-mono font-black text-white leading-none">{name}</h4>
-            {canLink && <Share2 size={10} className="text-blue-500" />}
+            <h4 className="text-lg font-mono font-black text-white leading-none">
+              {name}
+            </h4>
+            {cleanDate && (
+               <div className="flex items-center space-x-1 px-1.5 py-0.5 rounded bg-slate-800">
+                  <span className="text-[7px] font-black text-slate-500 uppercase tracking-widest">{cleanDate}</span>
+               </div>
+            )}
           </div>
-          {price && (
+          {originPrice !== null && (
             <div className="mt-1.5 mb-1 flex items-center space-x-2">
-              <span className="text-[6px] font-black text-slate-500 uppercase tracking-[0.2em]">View Origin</span>
-              <span className="text-[10px] font-mono font-bold text-slate-400">₹{price}</span>
+              <span className="text-[6px] font-black text-slate-500 uppercase tracking-[0.2em]">FROM-</span>
+              <span className="text-[10px] font-mono font-bold text-slate-400">₹{originPrice.toLocaleString('en-IN')}</span>
             </div>
           )}
           <span className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500 mt-1 block leading-none">{displayPattern} FLOW</span>

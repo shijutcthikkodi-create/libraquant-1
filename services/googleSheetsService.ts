@@ -1,4 +1,3 @@
-
 import { TradeSignal, WatchlistItem, User, TradeStatus, LogEntry, ChatMessage, InsightData } from '../types';
 
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyERhGFKmElUCIlBSrApSnQ1QaUH359KeLtatIu0GQ6HNmJm7iYz4Wzkon0fTdkpIXY/exec'.trim();
@@ -112,7 +111,6 @@ export const fetchSheetData = async (retries = 3): Promise<SheetData | null> => 
   if (!SCRIPT_URL) return null;
   
   try {
-    // Standard GET with cache busting to minimize preflight issues
     const response = await fetch(`${SCRIPT_URL}?v=${Date.now()}`, {
       method: 'GET',
       mode: 'cors',
@@ -180,7 +178,10 @@ export const fetchSheetData = async (retries = 3): Promise<SheetData | null> => 
         category: getVal(ins, 'category') as any,
         trend: getVal(ins, 'trend') as any,
         pattern: getVal(ins, 'pattern') as any,
-        phase: getVal(ins, 'phase') as any
+        phase: getVal(ins, 'phase') as any,
+        viewOrigin: getNum(ins, 'originPrice') ?? getNum(ins, 'viewOrigin'),
+        cmp: getNum(ins, 'cmp'),
+        date: String(getVal(ins, 'date') || '').trim()
       }))
     };
   } catch (error) {
@@ -200,7 +201,6 @@ export const updateSheetData = async (target: string, action: string, payload: a
       cleanPayload.targets = cleanPayload.targets.join(', ');
     }
 
-    // Using text/plain for the POST to bypass CORS preflight triggers in Google Apps Script
     await fetch(SCRIPT_URL, {
       method: 'POST',
       mode: 'no-cors', 
