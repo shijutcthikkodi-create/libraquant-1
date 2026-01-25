@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
-import { Scale, Phone, KeyRound, ShieldAlert, CheckCircle2, Eye, EyeOff, Loader2, Smartphone, ShieldCheck, UserPlus, ArrowRight, MessageCircle, LogIn, ExternalLink } from 'lucide-react';
+import { Scale, Phone, KeyRound, ShieldAlert, CheckCircle2, Eye, EyeOff, Loader2, Smartphone, ShieldCheck, UserPlus, ArrowRight, MessageCircle, LogIn, ExternalLink, Lock } from 'lucide-react';
 import { fetchSheetData, updateSheetData } from '../services/googleSheetsService';
 
 interface LoginProps {
@@ -89,37 +88,31 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     const rawSavedId = String(sheetUser.deviceId || '').trim();
     const hasExistingLock = rawSavedId && rawSavedId !== "" && rawSavedId !== "null" && rawSavedId !== "undefined";
 
-    if (!sheetUser.isAdmin) {
-        if (!hasExistingLock) {
-            const updatedUser = { 
-                ...sheetUser, 
-                deviceId: browserDeviceId, 
-                lastPassword: sheetUser.password 
-            };
-            
-            const success = await updateSheetData('users', 'UPDATE_USER', updatedUser, sheetUser.id);
-            if (!success) {
-                setError("Terminal handshake failed. Try again.");
-                setLoading(false);
-                return;
-            }
-
-            await updateSheetData('logs', 'ADD', {
-              timestamp: new Date().toISOString(),
-              user: sheetUser.name,
-              action: 'HARDWARE_BINDING',
-              details: `Locked to terminal: ${browserDeviceId}`,
-              type: 'SECURITY'
-            });
-        } 
-        else if (rawSavedId !== browserDeviceId) {
-            setError(`SECURITY VIOLATION: Locked to another terminal. Contact Admin.`);
+    // ONLY BIND IF NO LOCK EXISTS
+    if (!sheetUser.isAdmin && !hasExistingLock) {
+        const updatedUser = { 
+            ...sheetUser, 
+            deviceId: browserDeviceId, 
+            lastPassword: sheetUser.password // Record the password used for this specific binding
+        };
+        
+        const success = await updateSheetData('users', 'UPDATE_USER', updatedUser, sheetUser.id);
+        if (!success) {
+            setError("Terminal handshake failed. Try again.");
             setLoading(false);
             return;
         }
+
+        await updateSheetData('logs', 'ADD', {
+          timestamp: new Date().toISOString(),
+          user: sheetUser.name,
+          action: 'HARDWARE_BINDING',
+          details: `Locked to terminal: ${browserDeviceId}`,
+          type: 'SECURITY'
+        });
     }
 
-    // CAPTURE EVERY LOGIN: Log this successful session start to the Google Sheet
+    // LOG SUCCESSFUL LOGIN
     await updateSheetData('logs', 'ADD', {
       timestamp: new Date().toISOString(),
       user: sheetUser.name,
@@ -146,12 +139,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setError('');
 
     try {
+        // 1. Password Verification
         if (password.trim() !== String(existingUser.password).trim()) {
             setError('Invalid Access Key.');
             setLoading(false);
             return;
         }
 
+        // 2. Expiry Check
         const rawExpiry = String(existingUser.expiryDate || '').trim().toLowerCase();
         const isPerpetual = rawExpiry === 'perpetual' || rawExpiry === 'admin' || !!existingUser.isAdmin;
 
@@ -170,13 +165,32 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             }
         }
 
-        const isPasswordReset = String(existingUser.lastPassword || '').trim() !== String(existingUser.password).trim();
-        const isDeviceCleared = !existingUser.deviceId || existingUser.deviceId === "" || existingUser.deviceId === "null";
+        // 3. HARDWARE LOCK LOGIC (Single Device Enforcement)
+        if (!existingUser.isAdmin) {
+            const rawSavedId = String(existingUser.deviceId || '').trim();
+            const hasExistingLock = rawSavedId && rawSavedId !== "" && rawSavedId !== "null" && rawSavedId !== "undefined";
+            
+            const lastBoundPassword = String(existingUser.lastPassword || '').trim();
+            const currentPassword = String(existingUser.password || '').trim();
+            const isPasswordChangedSinceLastBind = lastBoundPassword !== currentPassword;
 
-        if (!isPasswordReset && isDeviceCleared && existingUser.lastPassword) {
-            setError('SECURITY POLICY: NEW ACCESS KEY REQUIRED.');
-            setLoading(false);
-            return;
+            if (hasExistingLock) {
+                // If account is already locked to a device
+                if (rawSavedId !== browserDeviceId) {
+                    setError('SECURITY VIOLATION: Locked to another terminal. Multiple device logins are not permitted.');
+                    setLoading(false);
+                    return;
+                }
+            } else {
+                // If account is reset (deviceId is null)
+                // We REQUIRE a password change if the account was previously bound to something
+                if (lastBoundPassword && !isPasswordChangedSinceLastBind) {
+                    setError('SECURITY POLICY: Account was reset. You must use a NEW Access Key (updated by Admin) to bind this new device.');
+                    setLoading(false);
+                    return;
+                }
+                // If it's a completely new user (no lastBoundPassword) or password changed, they can bind now.
+            }
         }
 
         completeLogin(existingUser);
@@ -199,11 +213,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       expiryDate: 'PENDING',
       isAdmin: false,
       password: '',
-      deviceId: null
+      deviceId: null,
+      lastPassword: ''
     };
 
     try {
-      // COLLECT data to Google Sheets
       await updateSheetData('users', 'ADD', newLead);
       await updateSheetData('logs', 'ADD', {
         timestamp: new Date().toISOString(),
@@ -282,7 +296,7 @@ Hi Support, I would like to subscribe to the LibraQuant Institutional Terminal. 
                       {existingUser.name.charAt(0).toUpperCase()}
                    </div>
                    <div>
-                      <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Welcome Back</p>
+                      <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Subscriber Identity</p>
                       <p className="text-sm font-bold text-white uppercase">{existingUser.name}</p>
                    </div>
                 </div>
@@ -323,7 +337,7 @@ Hi Support, I would like to subscribe to the LibraQuant Institutional Terminal. 
                     className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl transition-all shadow-lg disabled:opacity-50 flex items-center justify-center text-[10px] uppercase tracking-[0.2em]"
                   >
                       {loading ? <Loader2 className="animate-spin mr-3" size={18} /> : <ShieldCheck className="mr-3" size={18} />}
-                      Start Session
+                      Verify Terminal
                   </button>
                 </div>
               </form>
@@ -333,7 +347,7 @@ Hi Support, I would like to subscribe to the LibraQuant Institutional Terminal. 
                    <ShieldAlert size={20} className="text-amber-500 shrink-0 mt-0.5" />
                    <div>
                       <p className="text-[10px] text-amber-500 font-black uppercase tracking-widest leading-none mb-1">Unregistered Terminal</p>
-                      <p className="text-[10px] text-slate-400 font-medium leading-relaxed italic">Identify yourself to proceed.</p>
+                      <p className="text-[10px] text-slate-400 font-medium leading-relaxed italic">Identify yourself to request access.</p>
                    </div>
                 </div>
 
@@ -369,7 +383,7 @@ Hi Support, I would like to subscribe to the LibraQuant Institutional Terminal. 
                             className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl transition-all shadow-lg flex items-center justify-center text-[10px] uppercase tracking-[0.2em]"
                         >
                             {loading ? <Loader2 className="animate-spin mr-3" size={18} /> : <LogIn className="mr-3" size={18} />}
-                            Login
+                            Request Access
                         </button>
                       </div>
                     </div>
@@ -418,7 +432,7 @@ Hi Support, I would like to subscribe to the LibraQuant Institutional Terminal. 
 
             <div className="mt-10 pt-8 border-t border-slate-800/50 text-center">
                 <div className="flex items-center justify-center space-x-2 mb-3">
-                   <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+                   <Lock size={10} className="text-blue-500" />
                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">HW_HASH: {browserDeviceId || 'SCANNING...'}</span>
                 </div>
                 <p className="text-[9px] text-slate-600 font-bold leading-relaxed uppercase tracking-tighter max-w-[280px] mx-auto">
