@@ -1,6 +1,6 @@
 import { TradeSignal, WatchlistItem, User, TradeStatus, LogEntry, ChatMessage, InsightData } from '../types';
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyERhGFKmElUCIlBSrApSnQ1QaUH359KeLtatIu0GQ6HNmJm7iYz4Wzkon0fTdkpIXY/exec'.trim();
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwjZGU3mdi8rcXiCmqAkQ6ATVqn646Yop-rS2kU9HyCzikQWJzo4LRIaNDSlHq_DqX2/exec'.trim();
 
 export interface SheetData {
   signals: (TradeSignal & { sheetIndex: number })[];
@@ -144,7 +144,7 @@ export const fetchSheetData = async (retries = 3): Promise<SheetData | null> => 
         isAdmin: isTrue(getVal(u, 'isAdmin')),
         password: String(getVal(u, 'password') || '').trim(),
         lastPassword: String(getVal(u, 'lastPassword') || '').trim(),
-        deviceId: String(getVal(u, 'deviceId') || '').trim() || null
+        deviceId: String(getVal(u, 'deviceId') || getVal(u, 'hwid') || getVal(u, 'hardwareid') || '').trim() || null
       })),
       logs: (data.logs || []).map((l: any) => {
         const detailsVal = getVal(l, 'details') || getVal(l, 'detail') || '';
@@ -199,6 +199,11 @@ export const updateSheetData = async (target: string, action: string, payload: a
     const cleanPayload = { ...payload };
     if (cleanPayload.targets && Array.isArray(cleanPayload.targets)) {
       cleanPayload.targets = cleanPayload.targets.join(', ');
+    }
+
+    // Explicitly mapping deviceId to column names used in the script if necessary
+    if (target === 'users' && payload.deviceId !== undefined) {
+      cleanPayload.deviceId = payload.deviceId;
     }
 
     await fetch(SCRIPT_URL, {
