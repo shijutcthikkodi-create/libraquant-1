@@ -1,5 +1,4 @@
 
-
 export enum TradeStatus {
   ACTIVE = 'ACTIVE',
   PARTIAL = 'PARTIAL BOOKED',
@@ -52,6 +51,9 @@ export interface InsightData {
   trend?: 'Bullish' | 'Bearish';
   pattern?: 'Narrow' | 'Range';
   phase?: 'Accumulation' | 'Distribution';
+  viewOrigin?: number;
+  cmp?: number;
+  date?: string;
 }
 
 export interface ChatMessage {
@@ -61,6 +63,7 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   isAdminReply: boolean;
+  broadcaster?: string;
 }
 
 export interface User {
@@ -70,7 +73,7 @@ export interface User {
   expiryDate: string;
   isAdmin: boolean;
   password?: string;
-  lastPassword?: string; // Track password at time of device lock
+  lastPassword?: string; 
   deviceId?: string | null;
 }
 

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -75,7 +76,8 @@ const App: React.FC = () => {
   const [insights, setInsights] = useState<InsightData[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'error' | 'syncing'>('syncing');
   const [lastSyncTime, setLastSyncTime] = useState<string>('--:--:--');
-  const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('libra_sound_enabled') === 'true');
+  // Default to true (enabled) for new users (null !== 'false' is true)
+  const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('libra_sound_enabled') !== 'false');
   const [audioInitialized, setAudioInitialized] = useState(false);
   
   const [activeMajorAlerts, setActiveMajorAlerts] = useState<Record<string, number>>({});

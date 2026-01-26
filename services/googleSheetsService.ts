@@ -1,6 +1,7 @@
+
 import { TradeSignal, WatchlistItem, User, TradeStatus, LogEntry, ChatMessage, InsightData } from '../types';
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwjZGU3mdi8rcXiCmqAkQ6ATVqn646Yop-rS2kU9HyCzikQWJzo4LRIaNDSlHq_DqX2/exec'.trim();
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx4ywsbzU15eUnqr4-mI76ct83sgou2WSgvxLxxGFfnrthwrV5yDopi7ETzD7Giqy4m/exec'.trim();
 
 export interface SheetData {
   signals: (TradeSignal & { sheetIndex: number })[];
@@ -162,12 +163,20 @@ export const fetchSheetData = async (retries = 3): Promise<SheetData | null> => 
         const id = String(getVal(m, 'id') || '').trim() || 
                    `msg-${text.slice(0, 10)}-${timestamp}`.replace(/\s+/g, '-');
         
+        // Attempt to find broadcaster in multiple potential columns
+        const broadcasterRaw = getVal(m, 'broadcaster') || getVal(m, 'senderName') || getVal(m, 'adminName');
+        const broadcaster = (broadcasterRaw === undefined || broadcasterRaw === null || String(broadcasterRaw).toLowerCase() === 'undefined') 
+          ? '' 
+          : String(broadcasterRaw).trim();
+
         return {
           id,
           userId: String(getVal(m, 'userId') || '').trim(),
+          senderName: broadcaster, // Sync senderName with broadcaster for internal consistency
           text,
           timestamp: timestamp || new Date().toISOString(),
-          isAdminReply: isTrue(getVal(m, 'isAdminReply'))
+          isAdminReply: isTrue(getVal(m, 'isAdminReply')),
+          broadcaster: broadcaster
         };
       }),
       insights: (data.insights || []).map((ins: any) => ({
@@ -201,7 +210,6 @@ export const updateSheetData = async (target: string, action: string, payload: a
       cleanPayload.targets = cleanPayload.targets.join(', ');
     }
 
-    // Explicitly mapping deviceId to column names used in the script if necessary
     if (target === 'users' && payload.deviceId !== undefined) {
       cleanPayload.deviceId = payload.deviceId;
     }

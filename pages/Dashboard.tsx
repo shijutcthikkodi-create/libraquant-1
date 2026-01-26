@@ -1,7 +1,7 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import SignalCard from '../components/SignalCard';
-import { Clock, Zap, Activity, ShieldCheck, Send, Timer, ArrowRight, List, TrendingUp, TrendingDown, Target, MessageSquareCode, Radio as RadioIcon } from 'lucide-react';
+import { Clock, Zap, Activity, ShieldCheck, Send, Timer, ArrowRight, List, TrendingUp, TrendingDown, Target, MessageSquareCode, Radio as RadioIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import { WatchlistItem, TradeSignal, User, TradeStatus, ChatMessage } from '../types';
 import { GranularHighlights } from '../App';
 
@@ -28,6 +28,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   activeIntelAlert = 0,
   onSignalUpdate
 }) => {
+  const [currentIntelIndex, setCurrentIntelIndex] = useState(0);
+
   const parseFlexibleDate = (dateStr: string | undefined): Date | null => {
     if (!dateStr) return null;
     let d = new Date(dateStr);
@@ -45,11 +47,13 @@ const Dashboard: React.FC<DashboardProps> = ({
     return [...signals].sort((a, b) => (b.sheetIndex ?? 0) - (a.sheetIndex ?? 0))[0];
   }, [signals]);
 
-  const latestAdminIntel = useMemo(() => {
+  const adminIntelHistory = useMemo(() => {
     return messages
       .filter(m => m.isAdminReply)
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }, [messages]);
+
+  const currentIntel = adminIntelHistory[currentIntelIndex];
 
   const liveSignals = useMemo(() => {
     return (signals || []);
@@ -73,7 +77,15 @@ const Dashboard: React.FC<DashboardProps> = ({
     return `${Math.floor(seconds / 3600)}H AGO`;
   };
 
-  const isIntelAlerting = activeIntelAlert > Date.now();
+  const isIntelAlerting = activeIntelAlert > Date.now() && currentIntelIndex === 0;
+
+  const navigateIntel = (direction: 'prev' | 'next') => {
+    if (direction === 'prev') {
+      setCurrentIntelIndex(prev => Math.min(prev + 1, adminIntelHistory.length - 1));
+    } else {
+      setCurrentIntelIndex(prev => Math.max(prev - 1, 0));
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -98,28 +110,64 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-6">
-          {/* Market Intelligence Broadcast Space */}
-          {latestAdminIntel && (
+          {currentIntel && (
             <div className={`relative group overflow-hidden rounded-2xl border transition-all duration-700 ${isIntelAlerting ? 'border-blue-500 animate-card-pulse bg-blue-900/30' : 'border-blue-500/30 bg-gradient-to-br from-blue-900/20 to-slate-950'} p-1`}>
-               <div className="absolute top-0 right-0 p-3 opacity-10">
+               <div className="absolute top-0 right-0 p-3 opacity-10 pointer-events-none">
                   <MessageSquareCode size={64} className="text-blue-500" />
                </div>
+               
                <div className="relative bg-slate-900/80 rounded-[14px] p-5">
-                  <div className="flex items-center justify-between mb-3">
+                  {/* Absolute Navigation Arrows (End-to-End) */}
+                  {adminIntelHistory.length > 1 && (
+                    <>
+                      <button 
+                        onClick={() => navigateIntel('prev')} 
+                        disabled={currentIntelIndex === adminIntelHistory.length - 1}
+                        className="absolute left-0 top-0 bottom-0 px-2 flex items-center text-slate-500 hover:text-blue-400 disabled:opacity-0 transition-all z-20 group/nav"
+                        title="Older Broadcast"
+                      >
+                        <ChevronLeft size={32} className="group-hover/nav:scale-110 transition-transform" />
+                      </button>
+                      <button 
+                        onClick={() => navigateIntel('next')} 
+                        disabled={currentIntelIndex === 0}
+                        className="absolute right-0 top-0 bottom-0 px-2 flex items-center text-slate-500 hover:text-blue-400 disabled:opacity-0 transition-all z-20 group/nav"
+                        title="Newer Broadcast"
+                      >
+                        <ChevronRight size={32} className="group-hover/nav:scale-110 transition-transform" />
+                      </button>
+                    </>
+                  )}
+
+                  <div className="flex items-center justify-between mb-3 px-8">
                       <div className="flex items-center space-x-2">
                          <div className={`w-2 h-2 rounded-full ${isIntelAlerting ? 'bg-white animate-ping' : 'bg-blue-500 animate-pulse'}`}></div>
-                         <h3 className={`text-[10px] font-black uppercase tracking-[0.2em] ${isIntelAlerting ? 'text-white' : 'text-blue-400'}`}>Neural Link: Market Intelligence</h3>
+                         <h3 className={`text-[10px] font-black uppercase tracking-[0.2em] ${isIntelAlerting ? 'text-white' : 'text-blue-400'}`}>
+                           Neural Link: {currentIntelIndex === 0 ? 'Latest Intelligence' : 'Archives'}
+                         </h3>
                       </div>
-                      <span className="text-[9px] font-mono text-slate-600 font-bold uppercase">{new Date(latestAdminIntel.timestamp).toLocaleTimeString()} IST</span>
+                      <div className="flex items-center space-x-3">
+                        <span className="text-[9px] font-mono text-slate-600 font-bold uppercase">{new Date(currentIntel.timestamp).toLocaleTimeString()} IST</span>
+                        {adminIntelHistory.length > 1 && (
+                          <div className="px-2 py-0.5 bg-slate-800/50 border border-slate-700/50 rounded text-[9px] font-black text-slate-400 font-mono tracking-widest">
+                             {currentIntelIndex + 1} / {adminIntelHistory.length}
+                          </div>
+                        )}
+                      </div>
                   </div>
-                  <div className={`border-l-2 pl-4 py-1 ${isIntelAlerting ? 'border-white' : 'border-blue-500/50'}`}>
-                     <p className={`text-sm font-bold leading-relaxed tracking-tight italic opacity-95 ${isIntelAlerting ? 'text-white' : 'text-white'}`}>
-                        "{latestAdminIntel.text}"
-                     </p>
-                  </div>
-                  <div className="mt-3 flex items-center space-x-2">
-                     <RadioIcon size={10} className={isIntelAlerting ? 'text-white' : 'text-blue-500'} />
-                     <span className={`text-[8px] font-black uppercase tracking-widest ${isIntelAlerting ? 'text-white/70' : 'text-slate-500'}`}>Broadcasted by Libra Terminal Admin</span>
+                  
+                  <div key={currentIntel.id} className="animate-in fade-in slide-in-from-right-2 duration-300 px-8">
+                    <div className={`border-l-2 pl-4 py-1 ${isIntelAlerting ? 'border-white' : 'border-blue-500/50'}`}>
+                      <p className={`text-sm font-bold leading-relaxed tracking-tight italic opacity-95 text-white`}>
+                        "{currentIntel.text}"
+                      </p>
+                    </div>
+                    <div className="mt-3 flex items-center space-x-2">
+                      <RadioIcon size={10} className={isIntelAlerting ? 'text-white' : 'text-blue-500'} />
+                      <span className={`text-[8px] font-black uppercase tracking-widest ${isIntelAlerting ? 'text-white/70' : 'text-slate-500'}`}>
+                          Broadcasted by Admin{currentIntel.broadcaster ? ` - ${currentIntel.broadcaster}` : ''}
+                      </span>
+                    </div>
                   </div>
                </div>
             </div>
@@ -166,7 +214,6 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
           )}
 
-          {/* ULTRA COMPACT MARKET WATCH */}
           <div className="relative bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
             <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between bg-slate-800/10">
                  <div className="flex items-center space-x-2">

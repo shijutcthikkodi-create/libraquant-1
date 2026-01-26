@@ -1,12 +1,11 @@
-import React, { useState, useMemo } from 'react';
-import { WatchlistItem, TradeSignal, OptionType, TradeStatus, User, LogEntry, ChatMessage } from '../types';
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { TradeSignal, TradeStatus, User, LogEntry, ChatMessage, WatchlistItem } from '../types';
 import { 
-  Trash2, Edit2, Radio, UserCheck, RefreshCw, Search, 
-  History, Zap, Loader2, Database,
-  Plus, ArrowUpCircle, ArrowDownCircle, X, Database as DatabaseIcon,
-  UserPlus, Shield, User as UserIcon, CheckCircle2, Eye, EyeOff,
-  Key, TrendingUp, Send, MessageSquareCode, Radio as RadioIcon,
-  Briefcase, Activity, Moon, MessageSquare, Check
+  Zap, Loader2, Power, Briefcase, Activity, Moon, ShieldCheck, 
+  RefreshCw, MessageSquareCode, Send, Users, ShieldAlert, Clock,
+  Search, Edit3, Check, X, Calendar, Key, Shield, RotateCcw, Smartphone,
+  Edit, UserCircle, Eye, EyeOff
 } from 'lucide-react';
 import { updateSheetData } from '../services/googleSheetsService';
 
@@ -23,783 +22,568 @@ interface AdminProps {
   onHardSync?: () => Promise<void>;
 }
 
-const Admin: React.FC<AdminProps> = ({ signals = [], users = [], logs = [], messages = [], onHardSync }) => {
-  const [activeTab, setActiveTab] = useState<'SIGNALS' | 'CLIENTS' | 'BROADCAST' | 'LOGS'>('SIGNALS');
+const Admin: React.FC<AdminProps> = ({ signals = [], messages = [], users = [], logs = [], onHardSync }) => {
+  const [activeTab, setActiveTab] = useState<'SIGNALS' | 'BROADCAST' | 'USERS' | 'LOGS'>('SIGNALS');
   const [isSaving, setIsSaving] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [logFilter, setLogFilter] = useState<'ALL' | 'SECURITY' | 'TRADE' | 'SYSTEM' | 'USER'>('ALL');
 
-  // Broadcast State
-  const [intelText, setIntelText] = useState('');
+  // Search/Filter states
+  const [userSearch, setUserSearch] = useState('');
 
-  // Edit User Modal State
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editPhone, setEditPhone] = useState('');
-  const [editExpiry, setEditExpiry] = useState('');
-  const [editPassword, setEditPassword] = useState('');
-  const [showEditPassword, setShowEditPassword] = useState(false);
+  // Editing state for users
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editUserForm, setEditUserForm] = useState<Partial<User>>({});
 
-  // New Signal Form State
-  const [isAddingSignal, setIsAddingSignal] = useState(false);
+  // Minimalist New Signal Form State
   const [sigInstrument, setSigInstrument] = useState('NIFTY');
+  const [customStockName, setCustomStockName] = useState('');
   const [sigSymbol, setSigSymbol] = useState('');
-  const [sigType, setSigType] = useState<OptionType>(OptionType.CE);
+  const [sigType, setSigType] = useState('CE'); 
   const [sigAction, setSigAction] = useState<'BUY' | 'SELL'>('BUY');
   const [sigEntry, setSigEntry] = useState('');
-  const [sigSL, setSigSL] = useState('');
-  const [sigTargets, setSigTargets] = useState('');
-  const [sigComment, setSigComment] = useState('');
   const [sigIsBtst, setSigIsBtst] = useState(false);
   const [sigQty, setSigQty] = useState('');
+
+  // Intel/Broadcast State
+  const [intelText, setIntelText] = useState('');
+  const [broadcasterName, setBroadcasterName] = useState(() => {
+    return localStorage.getItem('libra_broadcaster_name') || 'Shiju Prasannan TC';
+  });
+  const [showBroadcasterName, setShowBroadcasterName] = useState(() => {
+    return localStorage.getItem('libra_show_broadcaster') !== 'false';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('libra_broadcaster_name', broadcasterName);
+    localStorage.setItem('libra_show_broadcaster', String(showBroadcasterName));
+  }, [broadcasterName, showBroadcasterName]);
 
   const activeSignals = useMemo(() => {
     return (signals || []).filter(s => s.status === TradeStatus.ACTIVE || s.status === TradeStatus.PARTIAL);
   }, [signals]);
 
-  const adminMessages = useMemo(() => {
-    return (messages || []).filter(m => m.isAdminReply).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [messages]);
-
   const filteredUsers = useMemo(() => {
-    let list = [...(users || [])];
-    if (searchQuery && activeTab === 'CLIENTS') {
-      const q = searchQuery.toLowerCase();
-      list = list.filter(u => 
-        (u.name || '').toLowerCase().includes(q) || 
-        (u.phoneNumber || '').includes(q) || 
-        (u.id || '').toLowerCase().includes(q)
+    let list = users;
+    if (userSearch) {
+      const s = userSearch.toLowerCase();
+      list = users.filter(u => 
+        u.name.toLowerCase().includes(s) || 
+        u.phoneNumber.includes(s)
       );
     }
     return list;
-  }, [users, searchQuery, activeTab]);
+  }, [users, userSearch]);
 
-  const filteredLogs = useMemo(() => {
-    let list = logFilter === 'ALL' 
-      ? [...(logs || [])] 
-      : (logs || []).filter(l => l.type === logFilter);
-      
-    if (searchQuery && activeTab === 'LOGS') {
-      const q = searchQuery.toLowerCase();
-      list = list.filter(l => 
-        (l.user || '').toLowerCase().includes(q) || 
-        (l.action || '').toLowerCase().includes(q) || 
-        (l.details || '').toLowerCase().includes(q)
-      );
-    }
-    return [...list].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [logs, logFilter, searchQuery, activeTab]);
+  const sortedLogs = useMemo(() => {
+    return [...logs].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [logs]);
 
-  const handleEditUser = (user: User) => {
-    setEditingUser(user);
-    setEditName(user.name || '');
-    setEditPhone(user.phoneNumber || '');
-    setEditExpiry(user.expiryDate || '');
-    setEditPassword(user.password || '');
-    setShowEditPassword(false);
-  };
-
-  const handleSaveUser = async () => {
-    if (!editingUser) return;
-    setIsSaving(true);
-    const updatedUser = { 
-      ...editingUser, 
-      name: editName, 
-      phoneNumber: editPhone, 
-      expiryDate: editExpiry, 
-      password: editPassword 
-    };
-    const success = await updateSheetData('users', 'UPDATE_USER', updatedUser, editingUser.id);
-    if (success) {
-      await updateSheetData('logs', 'ADD', {
-        timestamp: new Date().toISOString(),
-        user: 'ADMIN',
-        action: 'USER_UPDATE',
-        details: `Updated info/password for ${editName}`,
-        type: 'USER'
-      });
-      setEditingUser(null);
-      if (onHardSync) onHardSync();
-    }
-    setIsSaving(false);
-  };
-
-  const handleResetDevice = async (userToReset: User) => {
-    if (!window.confirm(`Clear hardware lock for ${userToReset.name}? This will force a password change on next binding.`)) return;
-    setIsSaving(true);
-    // Setting lastPassword to current password forces a rotation on next binding attempt
-    const updatedUser = { ...userToReset, deviceId: null, lastPassword: userToReset.password };
-    const success = await updateSheetData('users', 'UPDATE_USER', updatedUser, userToReset.id);
-    if (success) {
-      await updateSheetData('logs', 'ADD', {
-        timestamp: new Date().toISOString(),
-        user: 'ADMIN',
-        action: 'DEVICE_UNLOCKED',
-        details: `Hardware lock cleared for ${userToReset.name}. Password rotation enforced.`,
-        type: 'SECURITY'
-      });
-      if (onHardSync) onHardSync();
-    }
-    setIsSaving(false);
+  const getExpiryStatus = (expiryStr: string) => {
+    if (!expiryStr || expiryStr.toUpperCase() === 'PERPETUAL' || expiryStr.toUpperCase() === 'ADMIN') return 'SAFE';
+    try {
+      let dStr = expiryStr;
+      const parts = expiryStr.split(/[-/]/);
+      if (parts.length === 3 && parts[0].length === 2) dStr = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      const expiry = new Date(dStr);
+      expiry.setHours(23, 59, 59, 999);
+      const now = new Date();
+      if (isNaN(expiry.getTime())) return 'SAFE';
+      if (expiry < now) return 'EXPIRED';
+      const diffDays = (expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+      if (diffDays <= 5) return 'SOON';
+      return 'SAFE';
+    } catch (e) { return 'SAFE'; }
   };
 
   const handleAddSignal = async () => {
-    if (!sigSymbol || !sigEntry || !sigSL) return;
+    if (!sigSymbol || !sigEntry) return;
     setIsSaving(true);
     
-    const targets = sigTargets.split(',')
-      .map(t => parseFloat(t.trim()))
-      .filter(n => !isNaN(n));
-    
+    const finalInstrument = (sigInstrument === 'STOCKS' && customStockName.trim()) 
+      ? customStockName.trim().toUpperCase() 
+      : sigInstrument;
+
     const newSignal: any = {
-        instrument: sigInstrument,
+        id: `SIG-${Date.now()}`,
+        instrument: finalInstrument,
         symbol: sigSymbol,
         type: sigType,
         action: sigAction,
         entryPrice: parseFloat(sigEntry),
-        stopLoss: parseFloat(sigSL),
-        targets: targets,
-        targetsHit: 0,
-        status: TradeStatus.ACTIVE,
-        timestamp: new Date().toISOString(),
-        comment: sigComment,
+        quantity: sigQty ? parseInt(sigQty) : "",
         isBTST: sigIsBtst,
-        quantity: sigQty ? parseInt(sigQty) : 0,
-        cmp: parseFloat(sigEntry)
+        timestamp: new Date().toISOString()
     };
 
     const success = await updateSheetData('signals', 'ADD', newSignal);
     
     if (success) {
-      await updateSheetData('logs', 'ADD', {
-        timestamp: new Date().toISOString(),
-        user: 'ADMIN',
-        action: 'SIGNAL_BROADCAST',
-        details: `New: ${newSignal.instrument} ${newSignal.symbol}`,
-        type: 'TRADE'
-      });
-      setSigSymbol(''); setSigEntry(''); setSigSL(''); setSigTargets(''); setSigComment(''); setSigQty(''); setSigIsBtst(false);
-      setIsAddingSignal(false);
-      if (onHardSync) onHardSync();
+      setSigSymbol(''); setSigEntry(''); setSigQty(''); setSigIsBtst(false); setCustomStockName('');
+      if (onHardSync) await onHardSync();
     }
     setIsSaving(false);
+  };
+
+  const handleUrgentExit = async (signal: TradeSignal) => {
+    if (!window.confirm(`Confirm URGENT EXIT for ${signal.instrument} ${signal.symbol}?`)) return;
+    setSavingId(signal.id);
+    setIsSaving(true);
+    
+    const payload = { 
+      id: signal.id,
+      instrument: signal.instrument,
+      symbol: signal.symbol,
+      status: TradeStatus.EXITED,
+      "exit input": "EXIT_NOW", 
+      lastTradedTimestamp: new Date().toISOString(),
+      sheetIndex: (signal as any).sheetIndex
+    };
+    
+    const success = await updateSheetData('signals', 'UPDATE_SIGNAL', payload, signal.id);
+    
+    if (success && onHardSync) {
+      setTimeout(async () => {
+        await onHardSync();
+        setSavingId(null);
+        setIsSaving(false);
+      }, 1500);
+    } else {
+      setSavingId(null);
+      setIsSaving(false);
+    }
   };
 
   const handlePostIntel = async () => {
     if (!intelText.trim()) return;
     setIsSaving(true);
-    const newBroadcast: Partial<ChatMessage> = {
+    const success = await updateSheetData('messages', 'ADD', {
+      id: `msg-${Date.now()}`,
       text: intelText.trim(),
       timestamp: new Date().toISOString(),
       isAdminReply: true,
-      senderName: 'TERMINAL ADMIN',
-      userId: 'ADMIN'
-    };
-    const success = await updateSheetData('messages', 'ADD', newBroadcast);
+      userId: 'ADMIN',
+      broadcaster: showBroadcasterName ? broadcasterName.trim() : ''
+    });
     if (success) {
-      await updateSheetData('logs', 'ADD', {
-        timestamp: new Date().toISOString(),
-        user: 'ADMIN',
-        action: 'INTEL_BROADCAST',
-        details: `Global broadcast posted.`,
-        type: 'SYSTEM'
-      });
       setIntelText('');
-      if (onHardSync) onHardSync();
+      if (onHardSync) await onHardSync();
     }
     setIsSaving(false);
   };
 
-  const triggerQuickUpdate = async (signal: TradeSignal, updates: Partial<TradeSignal>, actionLabel: string) => {
-    setSavingId(signal.id);
+  const startEditingUser = (u: User) => {
+    setEditingUserId(u.id);
+    setEditUserForm({ ...u });
+  };
+
+  const cancelEditingUser = () => {
+    setEditingUserId(null);
+    setEditUserForm({});
+  };
+
+  const saveUserUpdate = async (userId: string) => {
     setIsSaving(true);
+    setSavingId(userId);
     
-    const isClosing = updates.status && (
-      updates.status === TradeStatus.EXITED || 
-      updates.status === TradeStatus.STOPPED || 
-      updates.status === TradeStatus.ALL_TARGET
-    );
-    
-    const payload = { 
-      ...signal, 
-      ...updates, 
-      ...(isClosing ? { lastTradedTimestamp: new Date().toISOString() } : {})
+    const payload = {
+      id: userId,
+      name: editUserForm.name,
+      phoneNumber: editUserForm.phoneNumber,
+      expiryDate: editUserForm.expiryDate,
+      isAdmin: editUserForm.isAdmin,
+      password: editUserForm.password
     };
-    
-    const success = await updateSheetData('signals', 'UPDATE_SIGNAL', payload, signal.id);
+
+    const success = await updateSheetData('users', 'UPDATE_USER', payload, userId);
     
     if (success) {
-      await updateSheetData('logs', 'ADD', {
-        timestamp: new Date().toISOString(),
-        user: 'ADMIN',
-        action: `Trade ${actionLabel}`,
-        details: `${signal.instrument}: ${updates.status || 'Updated'}`,
-        type: 'TRADE'
-      });
+      setEditingUserId(null);
       if (onHardSync) await onHardSync();
     }
     setSavingId(null);
     setIsSaving(false);
   };
 
-  const getLogTypeColor = (type: string) => {
-    switch(type) {
-      case 'SECURITY': return 'text-rose-400 bg-rose-500/10 border-rose-500/20';
-      case 'TRADE': return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
-      case 'USER': return 'text-blue-400 bg-blue-500/10 border-blue-500/20';
-      default: return 'text-slate-400 bg-slate-500/10 border-slate-500/20';
+  const handleResetHWID = async (user: User) => {
+    if (!window.confirm(`RESET device lock for ${user.name}? This will allow login from any new device.`)) return;
+    setIsSaving(true);
+    setSavingId(user.id);
+    
+    const payload = {
+        id: user.id,
+        deviceId: "" 
+    };
+    
+    const success = await updateSheetData('users', 'UPDATE_USER', payload, user.id);
+    
+    if (success && onHardSync) {
+      await onHardSync();
     }
+    setSavingId(null);
+    setIsSaving(false);
   };
 
   return (
-    <div className="max-w-6xl mx-auto pb-20">
-      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8">
-        <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">Admin Terminal</h2>
-            <p className="text-slate-500 text-xs font-medium mt-1">Management Console</p>
+    <div className="max-w-7xl mx-auto pb-32 px-2 sm:px-4 space-y-8 animate-in fade-in duration-500">
+      <div className="flex flex-col space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+              <h2 className="text-2xl font-black text-white tracking-tighter uppercase italic">Terminal Command</h2>
+              <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] mt-1">Superuser Administrative Access</p>
+          </div>
+          <button onClick={onHardSync} className="flex items-center space-x-2 px-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-[10px] font-black text-blue-500 uppercase tracking-widest hover:bg-slate-800 transition-colors">
+              <RefreshCw size={14} className={isSaving ? 'animate-spin' : ''} />
+              <span>Force Global Sync</span>
+          </button>
         </div>
-        <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-800 mt-4 md:mt-0 shadow-lg overflow-x-auto">
+
+        <div className="flex bg-slate-900 border border-slate-800 p-1 rounded-2xl shadow-2xl overflow-x-auto no-scrollbar">
             {[
-              { id: 'SIGNALS', icon: Radio, label: 'Signals' },
-              { id: 'BROADCAST', icon: RadioIcon, label: 'Market Intelligence' },
-              { id: 'CLIENTS', icon: UserIcon, label: 'Subscribers' },
-              { id: 'LOGS', icon: History, label: 'Audit Trail' }
-            ].map((tab) => (
-              <button 
-                  key={tab.id}
-                  onClick={() => { setActiveTab(tab.id as any); setSearchQuery(''); }}
-                  className={`flex items-center px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
-              >
-                  <tab.icon size={14} className="mr-2" />
-                  {tab.label}
-              </button>
+                { id: 'SIGNALS', icon: Zap, label: 'Execution' },
+                { id: 'BROADCAST', icon: MessageSquareCode, label: 'Alpha' },
+                { id: 'USERS', icon: Users, label: 'Subscribers' },
+                { id: 'LOGS', icon: ShieldAlert, label: 'Audit' }
+            ].map(tab => (
+                <button 
+                    key={tab.id}
+                    onClick={() => { setActiveTab(tab.id as any); setEditingUserId(null); }}
+                    className={`flex items-center px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${activeTab === tab.id ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                    <tab.icon size={14} className="mr-2" />
+                    {tab.label}
+                </button>
             ))}
         </div>
       </div>
 
       {activeTab === 'SIGNALS' && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-                <div className="p-5 border-b border-slate-800 flex justify-between items-center bg-slate-800/20">
-                    <div className="flex items-center">
-                        <Plus size={18} className="mr-3 text-blue-500" />
-                        <h3 className="text-sm font-bold text-white uppercase tracking-wider">Broadcast Engine</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-in slide-in-from-bottom-2">
+            <div className="lg:col-span-5 space-y-6">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
+                    <div className="p-6 border-b border-slate-800 bg-slate-800/20 flex items-center">
+                        <Zap size={18} className="mr-3 text-blue-500" />
+                        <h3 className="text-[11px] font-black text-white uppercase tracking-[0.2em]">New Execution Order</h3>
                     </div>
-                    {!isAddingSignal && (
-                      <div className="flex space-x-2">
-                        <button onClick={onHardSync} className="flex items-center px-4 py-2 rounded-lg bg-slate-800 text-blue-400 border border-blue-500/20 text-xs font-bold hover:bg-blue-500/10 transition-all">
-                           <DatabaseIcon size={14} className="mr-2" />
-                           Hard Sync
-                        </button>
-                        <button onClick={() => setIsAddingSignal(true)} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors shadow-lg shadow-blue-900/40 uppercase tracking-widest">
-                            New Signal
-                        </button>
-                      </div>
-                    )}
-                </div>
-
-                {isAddingSignal && (
-                    <div className="p-6 bg-slate-950/40 space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-tighter">Instrument</label>
-                                <select value={sigInstrument} onChange={e => setSigInstrument(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:border-blue-500 outline-none">
+                    <div className="p-6 space-y-5">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="col-span-1">
+                                <label className="block text-[9px] font-black text-slate-500 mb-1.5 uppercase tracking-widest">Instrument</label>
+                                <select value={sigInstrument} onChange={e => { setSigInstrument(e.target.value); if (e.target.value !== 'STOCKS') setCustomStockName(''); }} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-xs text-white focus:border-blue-500 outline-none font-bold">
                                     <option value="NIFTY">NIFTY</option>
                                     <option value="BANKNIFTY">BANKNIFTY</option>
                                     <option value="FINNIFTY">FINNIFTY</option>
                                     <option value="MIDCPNIFTY">MIDCPNIFTY</option>
                                     <option value="SENSEX">SENSEX</option>
-                                    <option value="STOCKS">STOCKS</option>
+                                    <option value="STOCKS">STOCKS (MANUAL)</option>
                                 </select>
+                                {sigInstrument === 'STOCKS' && (
+                                  <div className="mt-3 animate-in fade-in slide-in-from-top-1 duration-300">
+                                    <label className="block text-[8px] font-black text-blue-500 mb-1 uppercase tracking-widest flex items-center">
+                                      <Edit size={10} className="mr-1" /> Custom Stock Name
+                                    </label>
+                                    <input 
+                                      type="text" 
+                                      value={customStockName} 
+                                      onChange={e => setCustomStockName(e.target.value)} 
+                                      placeholder="e.g. RELIANCE" 
+                                      className="w-full bg-slate-950 border border-blue-500/50 rounded-xl px-4 py-2.5 text-xs text-white focus:border-blue-500 outline-none font-black tracking-widest" 
+                                    />
+                                  </div>
+                                )}
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-tighter">Strike / Symbol</label>
-                                <input type="text" value={sigSymbol} onChange={e => setSigSymbol(e.target.value)} placeholder="e.g. 22500" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:border-blue-500 outline-none font-mono" />
+                            <div className="col-span-1">
+                                <label className="block text-[9px] font-black text-slate-500 mb-1.5 uppercase tracking-widest">Symbol</label>
+                                <input type="text" value={sigSymbol} onChange={e => setSigSymbol(e.target.value)} placeholder="e.g. 24500" className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-xs text-white focus:border-blue-500 outline-none font-mono font-bold" />
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-tighter">Option Type</label>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {['CE', 'PE', 'FUT'].map(t => (
-                                        <button key={t} onClick={() => setSigType(t as any)} className={`py-2 text-xs font-bold rounded-lg border transition-all ${sigType === t ? 'bg-blue-600 border-blue-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-500 hover:text-slate-300'}`}>
-                                            {t}
-                                        </button>
-                                    ))}
-                                </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="col-span-1">
+                                <label className="block text-[9px] font-black text-slate-500 mb-1.5 uppercase tracking-widest">Type (e.g. CE JAN 27)</label>
+                                <input type="text" value={sigType} onChange={e => setSigType(e.target.value)} placeholder="CE / PE / FUT" className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-xs text-white focus:border-blue-500 outline-none font-mono font-bold" />
                             </div>
-                            <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-tighter">Action</label>
+                            <div className="col-span-1">
+                                <label className="block text-[9px] font-black text-slate-500 mb-1.5 uppercase tracking-widest">Action</label>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <button onClick={() => setSigAction('BUY')} className={`py-2 text-xs font-bold rounded-lg border transition-all ${sigAction === 'BUY' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-500'}`}>Buy</button>
-                                    <button onClick={() => setSigAction('SELL')} className={`py-2 text-xs font-bold rounded-lg border transition-all ${sigAction === 'SELL' ? 'bg-rose-600 border-rose-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-500'}`}>Sell</button>
+                                    <button onClick={() => setSigAction('BUY')} className={`py-3 text-[10px] font-black rounded-xl border transition-all ${sigAction === 'BUY' ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>BUY</button>
+                                    <button onClick={() => setSigAction('SELL')} className={`py-3 text-[10px] font-black rounded-xl border transition-all ${sigAction === 'SELL' ? 'bg-rose-600 border-rose-500 text-white shadow-lg' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>SELL</button>
                                 </div>
                             </div>
                         </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                        <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-tighter">Entry Price</label>
-                                <input type="number" value={sigEntry} onChange={e => setSigEntry(e.target.value)} placeholder="0.00" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:border-blue-500 outline-none font-mono" />
+                                <label className="block text-[9px] font-black text-slate-500 mb-1.5 uppercase tracking-widest">Entry Price</label>
+                                <input type="number" value={sigEntry} onChange={e => setSigEntry(e.target.value)} placeholder="0.00" className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-xs text-white focus:border-blue-500 outline-none font-mono font-bold" />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-tighter">Stop Loss</label>
-                                <input type="number" value={sigSL} onChange={e => setSigSL(e.target.value)} placeholder="0.00" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:border-blue-500 outline-none font-mono" />
-                            </div>
-                            <div className="md:col-span-1">
-                                <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-tighter">Quantity</label>
-                                <input type="number" value={sigQty} onChange={e => setSigQty(e.target.value)} placeholder="0" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:border-blue-500 outline-none font-mono" />
-                            </div>
-                            <div className="md:col-span-1 flex flex-col justify-end pb-1">
-                                <button 
-                                  onClick={() => setSigIsBtst(!sigIsBtst)}
-                                  className={`flex items-center justify-center space-x-2 py-2.5 rounded-xl border transition-all ${sigIsBtst ? 'bg-amber-500/20 border-amber-500 text-amber-500 shadow-lg shadow-amber-900/20' : 'bg-slate-900 border-slate-700 text-slate-500'}`}
-                                >
-                                  <Moon size={14} className={sigIsBtst ? 'animate-pulse' : ''} />
-                                  <span className="text-[10px] font-black uppercase tracking-widest">BTST / Overnight</span>
-                                </button>
+                                <label className="block text-[9px] font-black text-slate-500 mb-1.5 uppercase tracking-widest">Quantity</label>
+                                <input type="number" value={sigQty} onChange={e => setSigQty(e.target.value)} placeholder="Size" className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-xs text-white focus:border-blue-500 outline-none font-mono font-bold" />
                             </div>
                         </div>
-
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-tighter">Targets (Separate with comma + space: ", ")</label>
-                            <input type="text" value={sigTargets} onChange={e => setSigTargets(e.target.value)} placeholder="e.g. 120, 140, 180" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:border-blue-500 outline-none font-mono" />
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-tighter">Trade Comment / Intel</label>
-                            <div className="relative">
-                                <MessageSquare size={14} className="absolute left-3 top-3 text-slate-500" />
-                                <input type="text" value={sigComment} onChange={e => setSigComment(e.target.value)} placeholder="e.g. Strong breakout above VWAP, keep trailing..." className="w-full bg-slate-900 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-xs text-white focus:border-blue-500 outline-none" />
-                            </div>
-                        </div>
-
-                        <div className="flex items-center space-x-3 pt-2">
-                            <button 
-                                onClick={handleAddSignal} 
-                                disabled={isSaving || !sigSymbol || !sigEntry} 
-                                className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white py-4 rounded-xl text-sm font-bold transition-all shadow-xl flex items-center justify-center uppercase tracking-widest"
-                            >
-                                {isSaving ? <Loader2 size={16} className="animate-spin mr-2" /> : <Zap size={16} className="mr-2" />}
-                                {isSaving ? 'Dispatching...' : 'Broadcast Signal'}
-                            </button>
-                            <button onClick={() => setIsAddingSignal(false)} className="px-6 py-4 bg-slate-800 text-slate-400 rounded-xl hover:bg-slate-700 transition-colors font-bold text-sm uppercase tracking-tighter">Cancel</button>
-                        </div>
+                        <button onClick={() => setSigIsBtst(!sigIsBtst)} className={`w-full py-3 rounded-xl border transition-all flex items-center justify-center space-x-2 ${sigIsBtst ? 'bg-amber-500/10 border-amber-500 text-amber-500' : 'bg-slate-950 border-slate-800 text-slate-600'}`}>
+                            <Moon size={14} /> <span className="text-[9px] font-black uppercase tracking-widest">BTST Toggle</span>
+                        </button>
+                        <button onClick={handleAddSignal} disabled={isSaving || !sigSymbol || !sigEntry || (sigInstrument === 'STOCKS' && !customStockName.trim())} className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white py-4 rounded-2xl text-[11px] font-black transition-all shadow-xl shadow-blue-900/40 uppercase tracking-[0.2em] flex items-center justify-center">
+                            {isSaving ? <Loader2 size={16} className="animate-spin mr-3" /> : <ShieldCheck size={16} className="mr-3" />} Broadcast Signal
+                        </button>
                     </div>
-                )}
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-                <div className="p-5 border-b border-slate-800 bg-slate-800/10 flex justify-between items-center">
-                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">Active Signals ({activeSignals.length})</h3>
-                    {isSaving && <div className="flex items-center space-x-2 text-[10px] font-black text-blue-500 uppercase animate-pulse"><RefreshCw size={10} className="animate-spin" /> <span>Syncing Sheet...</span></div>}
                 </div>
-
-                <div className="p-5">
-                    {activeSignals.length === 0 ? (
-                        <div className="py-12 text-center border-2 border-dashed border-slate-800 rounded-2xl">
-                            <p className="text-slate-500 text-xs uppercase tracking-widest font-black">No Active Trades</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-4">
-                            {activeSignals.map((s) => (
-                                <div key={s.id} className={`bg-slate-950/50 border rounded-2xl p-5 flex flex-col items-center justify-between gap-6 transition-all ${savingId === s.id ? 'border-blue-500 ring-1 ring-blue-500/20' : 'border-slate-800'}`}>
-                                    <div className="flex flex-col lg:flex-row items-center justify-between w-full gap-6">
-                                        <div className="flex items-center space-x-4 w-full lg:w-auto">
-                                            <div className={`p-2 rounded-xl ${s.action === 'BUY' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-rose-900/30 text-rose-400'}`}>
-                                                {s.action === 'BUY' ? <ArrowUpCircle size={24} /> : <ArrowDownCircle size={24} />}
-                                            </div>
-                                            <div>
-                                                <h4 className="font-mono font-bold text-white">{s.instrument} {s.symbol}</h4>
-                                                <p className="text-[10px] text-slate-500 font-mono">Entry: ₹{s.entryPrice} | SL: ₹{s.stopLoss}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex flex-wrap items-center justify-end gap-3 w-full lg:w-auto">
-                                            {/* Quantity Input */}
-                                            <div className="flex items-center bg-slate-800 rounded-xl px-3 py-2 border border-slate-700">
-                                                <Briefcase size={12} className="text-blue-400 mr-2" />
-                                                <span className="text-[9px] font-black text-slate-500 uppercase mr-2">Qty:</span>
-                                                <input 
-                                                    key={`${s.id}-qty-${s.quantity}`}
-                                                    type="number"
-                                                    defaultValue={s.quantity ?? ''}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            const val = e.currentTarget.value === '' ? 0 : parseInt(e.currentTarget.value);
-                                                            if (val !== s.quantity) triggerQuickUpdate(s, { quantity: val }, "Qty Update");
-                                                            e.currentTarget.blur();
-                                                        }
-                                                    }}
-                                                    onBlur={(e) => {
-                                                        const val = e.target.value === '' ? 0 : parseInt(e.target.value);
-                                                        if (val !== s.quantity) {
-                                                            triggerQuickUpdate(s, { quantity: val }, "Qty Update");
-                                                        }
-                                                    }}
-                                                    placeholder="0"
-                                                    className="bg-transparent text-[10px] font-mono font-bold text-blue-400 w-12 outline-none"
-                                                />
-                                            </div>
-
-                                            {/* CMP Input */}
-                                            <div className="flex items-center bg-slate-800 rounded-xl px-3 py-2 border border-slate-700">
-                                                <Activity size={12} className="text-emerald-400 mr-2" />
-                                                <span className="text-[9px] font-black text-slate-500 uppercase mr-2">CMP:</span>
-                                                <input 
-                                                    key={`${s.id}-cmp-${s.cmp}`}
-                                                    type="number"
-                                                    step="any"
-                                                    defaultValue={s.cmp ?? ''}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            const val = e.currentTarget.value === '' ? 0 : parseFloat(e.currentTarget.value);
-                                                            if (val !== s.cmp) triggerQuickUpdate(s, { cmp: val }, "CMP Update");
-                                                            e.currentTarget.blur();
-                                                        }
-                                                    }}
-                                                    onBlur={(e) => {
-                                                        const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
-                                                        if (val !== s.cmp) {
-                                                            triggerQuickUpdate(s, { cmp: val }, "CMP Update");
-                                                        }
-                                                    }}
-                                                    placeholder="0.00"
-                                                    className="bg-transparent text-[10px] font-mono font-bold text-emerald-400 w-16 outline-none"
-                                                />
-                                            </div>
-
-                                            {/* Status Dropdown */}
-                                            <div className="flex items-center bg-slate-800 rounded-xl px-3 py-2 border border-slate-700">
-                                                <span className="text-[9px] font-black text-slate-500 uppercase mr-2">Status:</span>
-                                                <select 
-                                                    value={s.status} 
-                                                    onChange={(e) => triggerQuickUpdate(s, { status: e.target.value as TradeStatus }, "Status Change")}
-                                                    className="bg-transparent text-[10px] font-bold text-white outline-none cursor-pointer"
-                                                >
-                                                    {Object.values(TradeStatus).map(status => (
-                                                        <option key={status} value={status} className="bg-slate-900">{status}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-
-                                            {/* Targets Hit Control */}
-                                            <div className="flex items-center bg-slate-800 rounded-xl px-3 py-2 border border-slate-700">
-                                                <span className="text-[9px] font-black text-slate-500 uppercase mr-2">Hit:</span>
-                                                <div className="flex space-x-1">
-                                                    {[1, 2, 3].map(t => (
-                                                        <button 
-                                                            key={t}
-                                                            onClick={() => triggerQuickUpdate(s, { targetsHit: t, status: TradeStatus.PARTIAL, comment: `Target ${t} Done!` }, `T${t} Hit`)}
-                                                            className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-black transition-all ${ (s.targetsHit || 0) >= t ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600' }`}
-                                                        >
-                                                            {t}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            {/* TSL Editable Option */}
-                                            <div className="flex items-center bg-slate-800 rounded-xl px-3 py-2 border border-slate-700">
-                                                <span className="text-[9px] font-black text-slate-500 uppercase mr-2">TSL:</span>
-                                                <input 
-                                                    key={`${s.id}-tsl-${s.trailingSL}`}
-                                                    type="number"
-                                                    step="any"
-                                                    defaultValue={s.trailingSL ?? ''}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') {
-                                                            const val = e.currentTarget.value === '' ? null : parseFloat(e.currentTarget.value);
-                                                            if (val !== s.trailingSL) triggerQuickUpdate(s, { trailingSL: val }, "TSL Update");
-                                                            e.currentTarget.blur();
-                                                        }
-                                                    }}
-                                                    onBlur={(e) => {
-                                                        const val = e.target.value === '' ? null : parseFloat(e.target.value);
-                                                        if (val !== s.trailingSL) {
-                                                            triggerQuickUpdate(s, { trailingSL: val }, "TSL Update");
-                                                        }
-                                                    }}
-                                                    placeholder="None"
-                                                    className="bg-transparent text-[10px] font-mono font-bold text-yellow-500 w-16 outline-none"
-                                                />
-                                            </div>
-
-                                            {/* Quick Action Buttons */}
-                                            <div className="flex items-center gap-2">
-                                                <button 
-                                                    onClick={() => triggerQuickUpdate(s, { status: TradeStatus.ALL_TARGET, targetsHit: 3, comment: "Golden Trade! All targets hit." }, "All Done")}
-                                                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase shadow-lg shadow-emerald-900/40"
-                                                >
-                                                    All Done
-                                                </button>
-                                                <button 
-                                                    onClick={() => triggerQuickUpdate(s, { status: TradeStatus.STOPPED, comment: "Stop Loss hit." }, "SL Hit")}
-                                                    className="px-4 py-2 bg-rose-900/20 text-rose-400 border border-rose-500/20 rounded-xl text-[10px] font-black uppercase hover:bg-rose-500/10"
-                                                >
-                                                    SL Hit
-                                                </button>
-                                                <button 
-                                                    onClick={() => triggerQuickUpdate(s, { status: TradeStatus.EXITED, comment: "Manual market exit." }, "Manual Exit")}
-                                                    className="px-4 py-2 bg-slate-800 text-slate-300 border border-slate-700 rounded-xl text-[10px] font-black uppercase hover:bg-slate-700"
-                                                >
-                                                    Exit
-                                                </button>
-                                            </div>
-                                        </div>
+            </div>
+            <div className="lg:col-span-7 space-y-4">
+                <div className="flex items-center px-1">
+                    <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center">
+                        <Activity size={14} className="mr-2 text-emerald-500" /> Active Terminal Risk ({activeSignals.length})
+                    </h3>
+                </div>
+                {activeSignals.length === 0 ? (
+                    <div className="py-20 text-center bg-slate-900/30 border border-dashed border-slate-800 rounded-3xl">
+                        <p className="text-slate-600 text-[10px] font-black uppercase tracking-[0.3em] italic">Zero active risk</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 gap-3">
+                        {activeSignals.map(s => (
+                            <div key={s.id} className={`bg-slate-900 border ${savingId === s.id ? 'border-blue-500' : 'border-slate-800'} p-4 rounded-3xl shadow-xl flex items-center justify-between transition-all`}>
+                                <div className="flex items-center space-x-4">
+                                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border ${s.action === 'BUY' ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400' : 'bg-rose-900/20 border-rose-500/30 text-rose-400'}`}>
+                                        <Briefcase size={18} />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-black text-white font-mono leading-none uppercase">{s.instrument} {s.symbol} {s.type}</h4>
+                                        <p className="text-[9px] text-slate-500 uppercase font-black tracking-tighter mt-1">@ ₹{s.entryPrice} • QTY: {s.quantity || '1'}</p>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                                <button onClick={() => handleUrgentExit(s)} disabled={isSaving} className="px-8 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-xl shadow-rose-900/40">
+                                    {savingId === s.id ? <Loader2 size={14} className="animate-spin mr-2" /> : <Power size={14} className="mr-2" />} URGENT EXIT
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
       )}
 
       {activeTab === 'BROADCAST' && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl p-6">
+        <div className="max-w-2xl mx-auto space-y-6 animate-in slide-in-from-bottom-2">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl">
                 <div className="flex items-center space-x-3 mb-6">
                     <MessageSquareCode className="text-blue-500" size={24} />
-                    <h3 className="text-lg font-bold text-white uppercase tracking-tighter">Institutional Broadcast Feed</h3>
+                    <h3 className="text-[11px] font-black text-white uppercase tracking-[0.2em]">Broadcast Market Intel</h3>
                 </div>
-                
-                <div className="space-y-4">
-                    <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Post Market Intelligence (Morning Posts, View Updates, Alerts)</p>
-                    <textarea 
-                        value={intelText}
-                        onChange={(e) => setIntelText(e.target.value)}
-                        placeholder="Type global broadcast message..."
-                        className="w-full h-32 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white text-sm focus:border-blue-500 outline-none font-medium leading-relaxed"
-                    />
-                    <div className="flex justify-end">
-                        <button 
-                            onClick={handlePostIntel}
-                            disabled={isSaving || !intelText.trim()}
-                            className="flex items-center px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-lg disabled:opacity-50 uppercase tracking-widest"
-                        >
-                            {isSaving ? <Loader2 size={16} className="animate-spin mr-2" /> : <Send size={16} className="mr-2" />}
-                            Post Intelligence
-                        </button>
-                    </div>
-                </div>
-            </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-                <div className="p-5 border-b border-slate-800 bg-slate-800/10">
-                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Previous Broadcasts</h3>
-                </div>
-                <div className="divide-y divide-slate-800">
-                    {adminMessages.map((msg) => (
-                        <div key={msg.id} className="p-4 hover:bg-slate-800/20 transition-colors">
-                            <div className="flex items-center justify-between mb-1">
-                                <span className="text-[9px] font-mono text-slate-600 uppercase font-bold">{new Date(msg.timestamp).toLocaleString()}</span>
-                                <div className="flex items-center space-x-1">
-                                   <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
-                                   <span className="text-[8px] font-black text-blue-500 uppercase tracking-tighter">Live Intel</span>
-                                </div>
+                <div className="space-y-4">
+                    <div className="bg-slate-950/50 p-4 rounded-2xl border border-slate-800/50 space-y-4">
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest">Admin Broadcaster Name</label>
+                                <button 
+                                  onClick={() => setShowBroadcasterName(!showBroadcasterName)}
+                                  className={`flex items-center space-x-1.5 px-2 py-1 rounded-lg transition-colors ${showBroadcasterName ? 'text-blue-400 bg-blue-500/10' : 'text-slate-500 bg-slate-800'}`}
+                                >
+                                    {showBroadcasterName ? <Eye size={12} /> : <EyeOff size={12} />}
+                                    <span className="text-[9px] font-black uppercase tracking-tighter">{showBroadcasterName ? 'VISIBLE' : 'HIDDEN'}</span>
+                                </button>
                             </div>
-                            <p className="text-sm text-slate-300 font-medium leading-relaxed">{msg.text}</p>
+                            <div className={`relative group transition-opacity duration-300 ${showBroadcasterName ? 'opacity-100' : 'opacity-40'}`}>
+                                <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-blue-500 transition-colors" size={16} />
+                                <input 
+                                    type="text" 
+                                    value={broadcasterName} 
+                                    onChange={e => setBroadcasterName(e.target.value)} 
+                                    placeholder="e.g. Shiju Prasannan TC" 
+                                    disabled={!showBroadcasterName}
+                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl py-3 pl-10 pr-4 text-xs text-white focus:border-blue-500 outline-none font-black tracking-widest disabled:cursor-not-allowed" 
+                                />
+                            </div>
                         </div>
-                    ))}
-                    {adminMessages.length === 0 && (
-                        <div className="p-10 text-center">
-                            <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest">No previous intel broadcasts</p>
-                        </div>
-                    )}
+                    </div>
+
+                    <textarea 
+                        value={intelText} 
+                        onChange={e => setIntelText(e.target.value)} 
+                        placeholder="Push global intel..." 
+                        className="w-full h-32 bg-slate-950 border border-slate-800 rounded-2xl p-4 text-white text-sm focus:border-blue-500 outline-none font-bold mb-4" 
+                    />
+                    
+                    <button onClick={handlePostIntel} disabled={isSaving || !intelText.trim() || (showBroadcasterName && !broadcasterName.trim())} className="w-full py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all shadow-xl shadow-blue-900/40 flex items-center justify-center">
+                        {isSaving ? <Loader2 size={16} className="animate-spin mr-2" /> : <Send size={16} className="mr-2" />} Push Intel
+                    </button>
                 </div>
             </div>
         </div>
       )}
 
-      {activeTab === 'CLIENTS' && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
-            <div className="flex items-center justify-between gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-3.5 text-slate-500" size={18} />
-                <input 
-                  type="text" 
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search subscribers..." 
-                  className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3 pl-10 pr-4 text-white focus:border-blue-500 outline-none text-sm"
-                />
-              </div>
-              <div className="px-4 py-2 bg-slate-900 border border-slate-800 rounded-2xl flex items-center space-x-2">
-                <UserIcon size={16} className="text-blue-500" />
-                <span className="text-xs font-bold text-white">{filteredUsers.length} Subscribers</span>
-              </div>
+      {activeTab === 'USERS' && (
+        <div className="space-y-6 animate-in slide-in-from-bottom-2">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 px-1">
+                <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center">
+                    <Users size={14} className="mr-2 text-blue-500" /> Institutional Subscriber List ({users.length})
+                </h3>
+                <div className="relative w-full md:w-80">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={14} />
+                    <input type="text" value={userSearch} onChange={e => setUserSearch(e.target.value)} placeholder="Search by name or phone..." className="w-full bg-slate-900 border border-slate-800 rounded-xl py-2 pl-9 pr-4 text-[10px] text-white focus:border-blue-500 outline-none font-bold placeholder:text-slate-700" />
+                </div>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-800/30 text-[10px] font-black text-slate-500 uppercase tracking-[0.15em]">
-                      <th className="px-6 py-4">Subscriber</th>
-                      <th className="px-6 py-4">Access Key</th>
-                      <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/50">
-                    {filteredUsers.map(u => {
-                      const isExpired = u.expiryDate && new Date(u.expiryDate) < new Date();
-                      return (
-                        <tr key={u.id} className="hover:bg-slate-800/20 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center space-x-3">
-                              <div className="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400 font-bold text-xs uppercase">
-                                {u.name ? u.name.charAt(0) : '?'}
-                              </div>
-                              <div>
-                                <p className="text-sm font-bold text-white">{u.name || 'No Name'}</p>
-                                <p className="text-[10px] font-mono text-slate-500">{u.phoneNumber}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center space-x-2">
-                              <Key size={12} className="text-slate-500" />
-                              <span className="text-[11px] font-mono text-slate-300">{(u.password || '').slice(0, 10)}</span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className={`px-2 py-0.5 rounded text-[9px] font-black uppercase inline-block border ${isExpired ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
-                                {isExpired ? 'EXPIRED' : 'ACTIVE'}
-                            </div>
-                            <p className="text-[8px] text-slate-600 mt-1 uppercase font-bold tracking-tighter">Exp: {u.expiryDate || 'PERPETUAL'}</p>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <div className="flex items-center justify-end space-x-2">
-                              <button onClick={() => handleEditUser(u)} title="Edit Subscriber" className="p-2 bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-all"><Edit2 size={14} /></button>
-                              <button onClick={() => handleResetDevice(u)} title="Unlock Device" className={`p-2 rounded-lg transition-all ${u.deviceId ? 'bg-amber-500/10 text-amber-500' : 'bg-slate-800 text-slate-600 opacity-50'}`} disabled={!u.deviceId}><RefreshCw size={14} /></button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[700px]">
+                        <thead>
+                            <tr className="bg-slate-950/50 border-b border-slate-800">
+                                <th className="px-6 py-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Subscriber Details</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Access Expiry</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Access Key</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Hardware Lock</th>
+                                <th className="px-6 py-4 text-[9px] font-black text-slate-500 uppercase tracking-widest text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800">
+                            {filteredUsers.map(u => {
+                                const isEditing = editingUserId === u.id;
+                                const status = getExpiryStatus(u.expiryDate);
+                                const isSavingUser = savingId === u.id;
+
+                                if (isEditing) {
+                                    return (
+                                        <tr key={u.id} className="bg-blue-600/5 transition-colors">
+                                            <td className="px-6 py-4 space-y-2">
+                                                <input type="text" value={editUserForm.name} onChange={e => setEditUserForm({...editUserForm, name: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-blue-500 font-bold" placeholder="Full Name" />
+                                                <input type="text" value={editUserForm.phoneNumber} onChange={e => setEditUserForm({...editUserForm, phoneNumber: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-blue-500 font-mono" placeholder="Phone Number" />
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <input type="text" value={editUserForm.expiryDate} onChange={e => setEditUserForm({...editUserForm, expiryDate: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-blue-500 font-mono" placeholder="DD-MM-YYYY" />
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col space-y-2">
+                                                    <input type="text" value={editUserForm.password} onChange={e => setEditUserForm({...editUserForm, password: e.target.value})} className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-blue-500 font-mono" placeholder="Access Key" />
+                                                    <div className="flex items-center space-x-2">
+                                                        <input type="checkbox" id={`edit-admin-${u.id}`} checked={editUserForm.isAdmin} onChange={e => setEditUserForm({...editUserForm, isAdmin: e.target.checked})} className="w-4 h-4 rounded border-slate-700 bg-slate-950 accent-blue-600" />
+                                                        <label htmlFor={`edit-admin-${u.id}`} className="text-[9px] font-black text-slate-500 uppercase tracking-widest cursor-pointer">Admin Access</label>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center justify-center space-x-2">
+                                                    <button onClick={() => saveUserUpdate(u.id)} disabled={isSaving} className="p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-lg transition-all active:scale-95">
+                                                        {isSavingUser ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                                                    </button>
+                                                    <button onClick={cancelEditingUser} disabled={isSaving} className="p-2 bg-slate-800 text-slate-400 hover:text-white rounded-xl transition-all">
+                                                        <X size={16} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                }
+
+                                return (
+                                    <tr key={u.id} className={`hover:bg-slate-800/30 transition-colors ${status === 'EXPIRED' ? 'bg-rose-950/10' : status === 'SOON' ? 'bg-amber-950/10' : ''}`}>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center space-x-3">
+                                                <div className="w-10 h-10 rounded-2xl bg-slate-800 flex items-center justify-center text-slate-400 font-black border border-slate-700">
+                                                    {u.name.substring(0, 1).toUpperCase()}
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="text-sm font-black text-white uppercase tracking-tight">{u.name}</span>
+                                                        {u.isAdmin && <Shield size={10} className="text-purple-400" />}
+                                                    </div>
+                                                    <span className="text-[10px] font-bold font-mono text-slate-500">{u.phoneNumber}</span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex flex-col">
+                                                <span className={`text-xs font-mono font-black ${status === 'EXPIRED' ? 'text-rose-500' : status === 'SOON' ? 'text-amber-500' : 'text-slate-300'}`}>
+                                                    {u.expiryDate}
+                                                </span>
+                                                <span className={`text-[8px] font-black uppercase tracking-widest ${status === 'EXPIRED' ? 'text-rose-600' : status === 'SOON' ? 'text-amber-600' : 'text-slate-600'}`}>
+                                                    {status === 'EXPIRED' ? 'EXPIRED' : status === 'SOON' ? 'EXPIRING SOON' : 'ACTIVE'}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center space-x-2">
+                                                <Key size={12} className="text-slate-700" />
+                                                <span className="text-xs font-mono font-black text-slate-400 tracking-widest uppercase">{u.password || '----'}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center justify-between group/hwid">
+                                                <div className="flex items-center space-x-2">
+                                                    <Smartphone size={12} className={u.deviceId ? 'text-blue-500' : 'text-slate-700'} />
+                                                    <span className={`text-[10px] font-mono font-bold uppercase truncate max-w-[100px] ${u.deviceId ? 'text-slate-300' : 'text-slate-700 italic'}`}>
+                                                        {u.deviceId ? u.deviceId.substring(0, 10) + '...' : 'Unbound'}
+                                                    </span>
+                                                </div>
+                                                {u.deviceId && (
+                                                    <button 
+                                                        onClick={() => handleResetHWID(u)}
+                                                        disabled={isSaving}
+                                                        className="p-1.5 bg-slate-800 text-slate-500 hover:text-amber-500 rounded-lg opacity-0 group-hover/hwid:opacity-100 transition-all border border-transparent hover:border-amber-500/20"
+                                                        title="Reset Device Lock"
+                                                    >
+                                                        <RotateCcw size={12} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <button onClick={() => startEditingUser(u)} className="p-2.5 bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-700 transition-all active:scale-95" title="Edit Subscriber">
+                                                <Edit3 size={16} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+                {filteredUsers.length === 0 && (
+                    <div className="p-20 text-center bg-slate-900/20">
+                        <Users size={40} className="mx-auto text-slate-800 mb-4 opacity-30" />
+                        <p className="text-slate-600 text-[10px] font-black uppercase tracking-[0.3em] italic">No matching subscribers</p>
+                    </div>
+                )}
             </div>
         </div>
       )}
 
       {activeTab === 'LOGS' && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="relative flex-1 w-full">
-                <Search className="absolute left-3 top-3.5 text-slate-500" size={18} />
-                <input 
-                  type="text" 
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Filter logs..." 
-                  className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3 pl-10 pr-4 text-white focus:border-blue-500 outline-none text-sm"
-                />
-              </div>
-              <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-800 shadow-lg overflow-x-auto w-full sm:w-auto">
-                {['ALL', 'SECURITY', 'TRADE', 'USER'].map((f) => (
-                  <button 
-                      key={f}
-                      onClick={() => setLogFilter(f as any)}
-                      className={`px-4 py-2 rounded-lg text-[10px] font-black transition-all uppercase tracking-widest ${logFilter === f ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}
-                  >
-                      {f}
-                  </button>
-                ))}
-              </div>
+        <div className="space-y-6 animate-in slide-in-from-bottom-2">
+            <div className="flex items-center justify-between">
+                <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-[0.2em] flex items-center">
+                    <ShieldAlert size={14} className="mr-2 text-rose-500" /> Terminal Audit Logs
+                </h3>
             </div>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-              <div className="divide-y divide-slate-800/50 max-h-[600px] overflow-y-auto">
-                {filteredLogs.length === 0 ? (
-                  <div className="py-20 text-center">
-                    <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest italic">No matching records found in audit trail</p>
-                  </div>
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl divide-y divide-slate-800">
+                {sortedLogs.length === 0 ? (
+                    <div className="p-10 text-center text-slate-600 text-[10px] font-black uppercase tracking-widest italic">No archived events</div>
                 ) : (
-                  filteredLogs.map((l, idx) => (
-                    <div key={idx} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-slate-800/20 transition-colors gap-3">
-                      <div className="flex items-start space-x-4">
-                        <div className={`mt-1 p-1.5 rounded-lg border ${getLogTypeColor(l.type)}`}>
-                          {l.type === 'SECURITY' ? <Shield size={14} /> : l.type === 'TRADE' ? <TrendingUp size={14} /> : <UserPlus size={14} />}
+                    sortedLogs.map((log, idx) => (
+                        <div key={idx} className="p-5 hover:bg-slate-800/20 transition-colors group">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                                <div className="flex items-center space-x-3">
+                                    <div className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${
+                                        log.type === 'SECURITY' ? 'bg-rose-950/20 border-rose-500/30 text-rose-400' :
+                                        log.type === 'TRADE' ? 'bg-emerald-900/20 border-emerald-500/30 text-emerald-400' :
+                                        'bg-blue-900/20 border-blue-500/30 text-blue-400'
+                                    }`}>
+                                        {log.type}
+                                    </div>
+                                    <span className="text-[10px] font-black text-white uppercase tracking-tight">{log.user}</span>
+                                </div>
+                                <div className="flex items-center text-[9px] font-mono text-slate-600 font-bold uppercase">
+                                    <Clock size={10} className="mr-1.5" /> {new Date(log.timestamp).toLocaleString()}
+                                </div>
+                            </div>
+                            <div className="flex flex-col space-y-1">
+                                <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">{log.action}</span>
+                                <p className="text-xs text-slate-400 font-medium italic">"{log.details}"</p>
+                            </div>
                         </div>
-                        <div>
-                          <div className="flex items-center space-x-2 mb-0.5">
-                            <span className="text-[11px] font-black text-white uppercase tracking-tighter">{l.action}</span>
-                            <span className="text-[9px] font-mono text-slate-600">{new Date(l.timestamp).toLocaleString()}</span>
-                          </div>
-                          <p className="text-xs text-slate-400 font-medium">{l.details}</p>
-                        </div>
-                      </div>
-                      <div className="sm:text-right">
-                        <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{l.user}</span>
-                      </div>
-                    </div>
-                  ))
+                    ))
                 )}
-              </div>
             </div>
-        </div>
-      )}
-
-      {/* Edit User Modal */}
-      {editingUser && (
-        <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-xl flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-white flex items-center">
-                <Edit2 size={18} className="mr-3 text-blue-500" />
-                Edit Subscriber
-              </h3>
-              <button onClick={() => setEditingUser(null)} className="p-2 hover:bg-slate-800 rounded-full text-slate-500"><X size={20} /></button>
-            </div>
-            <div className="p-6 space-y-4">
-               <div>
-                  <label className="block text-[10px] font-black text-slate-500 uppercase mb-1.5">Full Name</label>
-                  <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-sm focus:border-blue-500 outline-none" />
-               </div>
-               <div>
-                  <label className="block text-[10px] font-black text-slate-500 uppercase mb-1.5">Phone Number</label>
-                  <input type="text" value={editPhone} onChange={e => setEditPhone(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-sm focus:border-blue-500 outline-none" />
-               </div>
-               <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1.5">Access Key (Password)</label>
-                    <div className="relative">
-                        <input 
-                            type={showEditPassword ? "text" : "password"} 
-                            value={editPassword} 
-                            onChange={e => setEditPassword(e.target.value)} 
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-4 pr-10 py-2.5 text-white text-sm focus:border-blue-500 outline-none font-mono" 
-                        />
-                        <button 
-                            type="button"
-                            onClick={() => setShowEditPassword(!showEditPassword)}
-                            className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300 transition-colors"
-                        >
-                            {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1.5">Expiry Date (YYYY-MM-DD)</label>
-                    <input type="text" value={editExpiry} onChange={e => setEditExpiry(e.target.value)} placeholder="YYYY-MM-DD" className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-sm focus:border-blue-500 outline-none font-mono" />
-                  </div>
-               </div>
-               <p className="text-[9px] text-amber-500 font-bold uppercase leading-relaxed italic">
-                 Note: Resetting a device forces a password change. Subscriber must use a NEW access key for their next terminal binding.
-               </p>
-            </div>
-            <div className="p-6 bg-slate-950/50 border-t border-slate-800 flex space-x-3">
-               <button onClick={handleSaveUser} disabled={isSaving} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg flex items-center justify-center">
-                 {isSaving ? <Loader2 className="animate-spin mr-2" size={16} /> : <CheckCircle2 size={16} className="mr-2" />}
-                 {isSaving ? 'Updating...' : 'Save Changes'}
-               </button>
-               <button onClick={() => setEditingUser(null)} className="px-6 py-3 bg-slate-800 text-slate-400 font-bold rounded-xl hover:bg-slate-700 transition-colors">Cancel</button>
-            </div>
-          </div>
         </div>
       )}
     </div>
