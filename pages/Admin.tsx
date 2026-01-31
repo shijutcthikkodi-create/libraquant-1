@@ -133,8 +133,7 @@ const Admin: React.FC<AdminProps> = ({ signals = [], messages = [], users = [], 
       id: signal.id,
       instrument: signal.instrument,
       symbol: signal.symbol,
-      status: TradeStatus.EXITED,
-      "exit input": "EXIT_NOW", 
+      "exit input": "EXIT", 
       lastTradedTimestamp: new Date().toISOString(),
       sheetIndex: (signal as any).sheetIndex
     };
