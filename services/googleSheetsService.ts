@@ -1,7 +1,7 @@
 
 import { TradeSignal, WatchlistItem, User, TradeStatus, LogEntry, ChatMessage, InsightData } from '../types';
 
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx4ywsbzU15eUnqr4-mI76ct83sgou2WSgvxLxxGFfnrthwrV5yDopi7ETzD7Giqy4m/exec'.trim();
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzsGgTmJET-j414jqdLl3mQSy0Rm444KOWORIUAnsZHB2SFZVJKuAeHIeoMA-dDEyef/exec'.trim();
 
 export interface SheetData {
   signals: (TradeSignal & { sheetIndex: number })[];
