@@ -59,19 +59,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     return (signals || []);
   }, [signals]);
 
-  // Updated sorting logic: Active/Partial first, then by sheetIndex descending
   const sortedSignals = useMemo(() => {
-    return [...liveSignals].sort((a, b) => {
-      const aIsActive = a.status === TradeStatus.ACTIVE || a.status === TradeStatus.PARTIAL;
-      const bIsActive = b.status === TradeStatus.ACTIVE || b.status === TradeStatus.PARTIAL;
-
-      // Priority 1: Active vs Closed
-      if (aIsActive && !bIsActive) return -1;
-      if (!aIsActive && bIsActive) return 1;
-
-      // Priority 2: Recency (sheetIndex) within the same bucket
-      return (b.sheetIndex ?? 0) - (a.sheetIndex ?? 0);
-    });
+    return [...liveSignals].sort((a, b) => (b.sheetIndex ?? 0) - (a.sheetIndex ?? 0));
   }, [liveSignals]);
 
   const scrollToSignal = (id: string) => {
