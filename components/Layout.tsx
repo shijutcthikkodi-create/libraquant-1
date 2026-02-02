@@ -131,23 +131,7 @@ const Watermark = ({ user }: { user: User }) => {
 
 const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, onNavigate, watchlist = [], activeWatchlistAlerts = {} }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isTabFocused, setIsTabFocused] = useState(true);
   const [timeLeft, setTimeLeft] = useState<{ days: number, hours: number, minutes: number, seconds: number, expired: boolean, soon: boolean, perpetual: boolean } | null>(null);
-
-  useEffect(() => {
-    if (user?.isAdmin) return;
-    const handleVisibility = () => setIsTabFocused(!document.hidden);
-    const handleBlur = () => setIsTabFocused(false);
-    const handleFocus = () => setIsTabFocused(true);
-    window.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('blur', handleBlur);
-    window.addEventListener('focus', handleFocus);
-    return () => {
-      window.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('blur', handleBlur);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [user]);
 
   useEffect(() => {
     const calculateTime = () => {
@@ -213,14 +197,7 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout, currentPage, 
   };
 
   return (
-    <div className={`h-[100dvh] w-full flex flex-col md:flex-row relative overflow-hidden bg-slate-950 ${!isTabFocused ? 'app-protected' : ''}`}>
-      {!isTabFocused && !user?.isAdmin && (
-        <div className="fixed inset-0 z-[99999] bg-slate-950/80 backdrop-blur-3xl flex flex-col items-center justify-center text-center p-6">
-          <EyeOff size={64} className="text-slate-500 mb-4 animate-pulse" />
-          <h2 className="text-2xl font-bold text-white mb-2 uppercase tracking-tighter">Terminal Locked</h2>
-        </div>
-      )}
-
+    <div className="h-[100dvh] w-full flex flex-col md:flex-row relative overflow-hidden bg-slate-950">
       {user && <Watermark user={user} />}
 
       {/* GLOBAL TOAST NOTIFICATIONS */}
