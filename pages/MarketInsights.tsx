@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { TrendingUp, Activity, BarChart3, Target, Clock, ShieldCheck, Flame } from 'lucide-react';
+import { TrendingUp, Activity, BarChart3, Target, Clock, ShieldCheck, Flame, Timer } from 'lucide-react';
 import { InsightData, WatchlistItem } from '../types';
 
 interface MarketInsightsProps {
@@ -27,6 +27,15 @@ const isNeutral = (val: any): boolean => {
 const isHfr = (val: any): boolean => {
   const s = String(val || '').trim().toUpperCase();
   return ['H-FR', 'HFR', 'HIGH FREQUENCY', 'FAST'].includes(s);
+};
+
+const getDurationLabel = (category?: string) => {
+  const c = String(category || '').trim().toUpperCase();
+  // Only provide labels for Short, Medium, and Long term as per latest request
+  if (c.includes('SHORT')) return '1 to 20 Days';
+  if (c.includes('MEDIUM')) return '1 Month to 6 Months';
+  if (c.includes('LONG')) return '1 Year to 5 Years';
+  return '';
 };
 
 const formatOnlyDate = (dateStr?: string) => {
@@ -58,22 +67,18 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [], watchlis
   const flowData = useMemo(() => insights.filter(i => i.type === 'FLOW' || !!i.pattern || !!i.phase), [insights]);
 
   const handleAssetClick = (symbol: string) => {
-    // Clear any existing timeout
     if (highlightTimeoutRef.current) {
       clearTimeout(highlightTimeoutRef.current);
     }
 
     setHighlightedSymbol(symbol);
-    // Cycle only between Trend and Dominance
     setActiveTab(prev => prev === 'TREND' ? 'DOMINANCE' : 'TREND');
 
-    // Set timeout to clear highlight after 2 blinks (0.8s * 2 = 1600ms)
     highlightTimeoutRef.current = setTimeout(() => {
       setHighlightedSymbol(null);
     }, 1600);
   };
 
-  // Effect to handle automatic scrolling when asset is selected across tabs
   useEffect(() => {
     if (highlightedSymbol && (activeTab === 'TREND' || activeTab === 'DOMINANCE')) {
       const timer = setTimeout(() => {
@@ -87,7 +92,6 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [], watchlis
     }
   }, [activeTab, highlightedSymbol]);
 
-  // Clean up timeout on unmount
   useEffect(() => {
     return () => {
       if (highlightTimeoutRef.current) clearTimeout(highlightTimeoutRef.current);
@@ -119,7 +123,7 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [], watchlis
               key={tab.id}
               onClick={() => {
                 setActiveTab(tab.id);
-                setHighlightedSymbol(null); // Clear highlight on manual tab change
+                setHighlightedSymbol(null); 
               }}
               className={`flex flex-col sm:flex-row items-center justify-center py-3 px-2 rounded-[16px] transition-all duration-300 group relative overflow-hidden ${
                 activeTab === tab.id 
@@ -202,8 +206,6 @@ const MarketInsights: React.FC<MarketInsightsProps> = ({ insights = [], watchlis
   );
 };
 
-/* --- TAB COMPONENTS --- */
-
 interface TrendStrengthCardProps {
   insight: InsightData;
   watchlist?: WatchlistItem[];
@@ -212,14 +214,15 @@ interface TrendStrengthCardProps {
 }
 
 const TrendStrengthCard: React.FC<TrendStrengthCardProps> = ({ insight, watchlist = [], isHighlighted, onSelect }) => {
-  const { symbol, sentiment, strength = 50, viewOrigin, cmp: directCmp, date } = insight;
+  const { symbol, sentiment, strength = 50, viewOrigin, cmp: directCmp, date, category } = insight;
   const { name } = parseSymbol(symbol);
   
   const isBull = isBullish(sentiment);
   const isBear = isBearish(sentiment);
   const isNeut = isNeutral(sentiment);
+  
   const status = isBull ? "Active Buyers" : isBear ? "Active Sellers" : isNeut ? "Consolidation" : "Neutral";
-  const displaySentiment = isBull ? 'Bullish' : isBear ? 'Bearish' : isNeut ? 'Neutral' : (sentiment || 'Monitoring');
+  const displaySentiment = isBull ? 'BULLISH' : isBear ? 'BEARISH' : isNeut ? 'NEUTRAL' : (sentiment?.toUpperCase() || 'MONITORING');
   
   const watchItem = watchlist.find(w => w.symbol.toUpperCase().includes(name.toUpperCase()));
   const originPrice = viewOrigin || null; 
@@ -265,11 +268,13 @@ const TrendStrengthCard: React.FC<TrendStrengthCardProps> = ({ insight, watchlis
           </div>
           
           <div className="mt-2 flex items-center justify-between border-t border-slate-800/30 pt-2">
-            <div className="flex items-center space-x-2">
-              <span className={`text-[10px] font-black uppercase tracking-widest ${isBull ? 'text-emerald-500' : isBear ? 'text-rose-500' : isNeut ? 'text-blue-400' : 'text-slate-500'}`}>
-                {displaySentiment}
-              </span>
-              <div className={`w-1.5 h-1.5 rounded-full ${isBull ? 'bg-emerald-500' : isBear ? 'bg-rose-500' : isNeut ? 'bg-blue-500' : 'bg-slate-500'} animate-pulse`} />
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className={`text-[10px] font-black uppercase tracking-widest ${isBull ? 'text-emerald-500' : isBear ? 'text-rose-500' : isNeut ? 'text-blue-400' : 'text-slate-500'}`}>
+                  {displaySentiment} BIAS
+                </span>
+                <div className={`w-1.5 h-1.5 rounded-full ${isBull ? 'bg-emerald-500' : isBear ? 'bg-rose-500' : isNeut ? 'bg-blue-500' : 'bg-slate-500'} animate-pulse`} />
+              </div>
             </div>
             <span className={`text-[9px] font-black uppercase tracking-tighter ${isBull ? 'text-emerald-400/80' : isBear ? 'text-rose-400/80' : isNeut ? 'text-blue-300/80' : 'text-slate-500'}`}>
               {status}
@@ -335,6 +340,7 @@ const DominanceLogicRow: React.FC<DominanceLogicRowProps> = ({ insight, isHighli
   const isBear = isBearish(sentiment);
   const isNeut = isNeutral(sentiment);
   const cleanDate = formatOnlyDate(date);
+  const duration = getDurationLabel(category);
   
   let status = "Balanced";
   let colorTheme = "blue";
@@ -347,7 +353,7 @@ const DominanceLogicRow: React.FC<DominanceLogicRowProps> = ({ insight, isHighli
   } else if (normCategory === 'SCALP') {
     status = isBear ? "Active Sellers" : isBull ? "Active Buyers" : "Scalping Range";
     colorTheme = isBear ? "rose" : isBull ? "emerald" : "blue";
-  } else if (normCategory === 'INTRADAY' || normCategory.includes('SHORT')) {
+  } else if (normCategory === 'INTRADAY' || normCategory.includes('SHORT') || normCategory.includes('MEDIUM')) {
     status = isBull ? "Active Buyers" : isBear ? "Active Sellers" : "Sideways Trend";
     colorTheme = isBull ? "emerald" : isBear ? "rose" : "blue";
   } else if (normCategory.includes('LONG')) {
@@ -395,7 +401,7 @@ const DominanceLogicRow: React.FC<DominanceLogicRowProps> = ({ insight, isHighli
         </div>
       </div>
       
-      <div className="flex-1 flex justify-center pointer-events-none">
+      <div className="flex-1 flex flex-col items-center justify-center pointer-events-none">
         <div className={`px-4 py-1 rounded-full border transition-all shadow-inner font-black text-[9px] uppercase tracking-widest ${
           colorTheme === 'rose' ? 'bg-slate-950 border-rose-500/40 text-rose-400' :
           colorTheme === 'emerald' ? 'bg-slate-950 border-emerald-500/40 text-emerald-400' :
@@ -403,6 +409,7 @@ const DominanceLogicRow: React.FC<DominanceLogicRowProps> = ({ insight, isHighli
         }`}>
           {displayCategory}
         </div>
+        {duration && <span className="text-[7px] font-black text-slate-600 uppercase tracking-tighter mt-1">{duration}</span>}
       </div>
 
       <div className="flex items-center space-x-2 text-right min-w-[100px] pointer-events-none">
