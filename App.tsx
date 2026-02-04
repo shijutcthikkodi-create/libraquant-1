@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -10,7 +11,7 @@ import BookedTrades from './pages/BookedTrades';
 import MarketInsights from './pages/MarketInsights';
 import { User, WatchlistItem, TradeSignal, TradeStatus, LogEntry, ChatMessage, InsightData } from './types';
 import { fetchSheetData, updateSheetData } from './services/googleSheetsService';
-import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen, Briefcase, ExternalLink, MessageCircle, ShieldAlert, AlertTriangle, ArrowRight, CheckCircle2, Activity, Flame, ShieldCheck, Info, Bell, BellOff } from 'lucide-react';
+import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen, Briefcase, ExternalLink, MessageCircle, ShieldAlert, AlertTriangle, ArrowRight, CheckCircle2, Activity, Flame, ShieldCheck, Info } from 'lucide-react';
 
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; 
 const SESSION_KEY = 'libra_user_session';
@@ -75,8 +76,8 @@ const App: React.FC = () => {
   const [insights, setInsights] = useState<InsightData[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'error' | 'syncing'>('syncing');
   const [lastSyncTime, setLastSyncTime] = useState<string>('--:--:--');
+  // Default to true (enabled) for new users (null !== 'false' is true)
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('libra_sound_enabled') !== 'false');
-  const [notificationsEnabled, setNotificationsEnabled] = useState(() => localStorage.getItem('libra_notifications_enabled') !== 'false');
   const [audioInitialized, setAudioInitialized] = useState(false);
   
   const [activeMajorAlerts, setActiveMajorAlerts] = useState<Record<string, number>>({});
@@ -98,6 +99,25 @@ const App: React.FC = () => {
   const alertTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFetchingRef = useRef(false);
 
+  const initAudio = useCallback(() => {
+    try {
+      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+      setAudioInitialized(true);
+    } catch (e) {
+      console.error("Audio init failed", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('click', initAudio, { once: true });
+    window.addEventListener('touchstart', initAudio, { once: true });
+    return () => {
+      window.removeEventListener('click', initAudio);
+      window.removeEventListener('touchstart', initAudio);
+    };
+  }, [initAudio]);
+
   const handleRedirectToCard = useCallback((id: string) => {
     setPage('dashboard');
     const scrollTask = () => {
@@ -112,56 +132,6 @@ const App: React.FC = () => {
     };
     setTimeout(scrollTask, 350);
   }, []);
-
-  const triggerPushNotification = useCallback((title: string, body: string, signalId?: string) => {
-    if (!notificationsEnabled || typeof window === 'undefined' || !('Notification' in window)) return;
-    
-    if (Notification.permission === 'granted') {
-      const notification = new Notification(title, {
-        body,
-        icon: 'https://cdn-icons-png.flaticon.com/512/2533/2533515.png',
-        badge: 'https://cdn-icons-png.flaticon.com/512/2533/2533515.png',
-        silent: true, 
-      });
-
-      notification.onclick = (e) => {
-        e.preventDefault();
-        window.focus();
-        if (signalId) handleRedirectToCard(signalId);
-        notification.close();
-      };
-    }
-  }, [notificationsEnabled, handleRedirectToCard]);
-
-  const initTerminal = useCallback(() => {
-    try {
-      // Audio Setup
-      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
-      setAudioInitialized(true);
-
-      // Notification Permission
-      if ('Notification' in window && Notification.permission !== 'denied') {
-        Notification.requestPermission().then(permission => {
-          if (permission === 'granted') {
-            setNotificationsEnabled(true);
-            localStorage.setItem('libra_notifications_enabled', 'true');
-          }
-        });
-      }
-    } catch (e) {
-      console.error("Initialization failed", e);
-    }
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener('click', initTerminal, { once: true });
-    window.addEventListener('touchstart', initTerminal, { once: true });
-    return () => {
-      window.removeEventListener('click', initTerminal);
-      window.removeEventListener('touchstart', initTerminal);
-    };
-  }, [initTerminal]);
 
   const stopAlertAudio = useCallback(() => {
     if (alertTimeoutRef.current) {
@@ -290,7 +260,6 @@ const App: React.FC = () => {
         let isBTSTUpdate = false;
         let targetSid: string | null = null;
         let topIndex = -1;
-        let notificationMsg = "";
         
         const now = Date.now();
         const expirationTime = now + MAJOR_ALERT_DURATION;
@@ -320,7 +289,6 @@ const App: React.FC = () => {
                   if (!isInitial && prevSignalsRef.current.length > 0) {
                     ALL_SIGNAL_KEYS.forEach(k => diff.add(k));
                     majorUpdateFound = signalChangeDetected = true;
-                    notificationMsg = `NEW: ${s.instrument} ${s.symbol} ${s.type} ${s.action} @ ₹${s.entryPrice}`;
                   }
                 } else {
                   ALL_SIGNAL_KEYS.forEach(k => {
@@ -330,13 +298,8 @@ const App: React.FC = () => {
                       diff.add(k);
                       if (ALERT_TRIGGER_KEYS.includes(k as keyof TradeSignal)) {
                          majorUpdateFound = signalChangeDetected = true;
-                         if (k === 'status') {
-                            notificationMsg = `STATUS: ${s.instrument} changed to ${s.status}`;
-                            if (s.status === TradeStatus.STOPPED || s.status === TradeStatus.EXITED || s.status === TradeStatus.ALL_TARGET) {
-                               isCriticalAlert = true;
-                            }
-                         } else {
-                            notificationMsg = `UPDATE: ${s.instrument} revised levels broadcasted.`;
+                         if (k === 'status' && (s.status === TradeStatus.STOPPED || s.status === TradeStatus.EXITED || s.status === TradeStatus.ALL_TARGET)) {
+                            isCriticalAlert = true;
                          }
                       }
                     }
@@ -381,14 +344,12 @@ const App: React.FC = () => {
           if (latestAdminMsg && latestAdminMsg.id !== lastIntelIdRef.current) {
             intelChangeDetected = true;
             lastIntelIdRef.current = latestAdminMsg.id;
-            triggerPushNotification("ALPHA INTELLIGENCE", latestAdminMsg.text);
           }
         }
 
         if (!isInitial) {
            if (signalChangeDetected) {
              playLongBeep(isCriticalAlert, isBTSTUpdate);
-             if (notificationMsg) triggerPushNotification("TERMINAL ALERT", notificationMsg, targetSid || undefined);
              if (targetSid) handleRedirectToCard(targetSid);
            } else if (intelChangeDetected) {
              playIntelAlert();
@@ -418,7 +379,7 @@ const App: React.FC = () => {
     } finally {
       isFetchingRef.current = false;
     }
-  }, [playLongBeep, playUpdateBlip, playIntelAlert, handleRedirectToCard, triggerPushNotification]);
+  }, [playLongBeep, playUpdateBlip, playIntelAlert, handleRedirectToCard]);
 
   const handleSignalUpdate = useCallback(async (updated: TradeSignal): Promise<boolean> => {
     const success = await updateSheetData('signals', 'UPDATE_SIGNAL', updated, updated.id);
@@ -477,18 +438,7 @@ const App: React.FC = () => {
     setSoundEnabled(next);
     localStorage.setItem('libra_sound_enabled', String(next));
     if (!next) stopAlertAudio();
-    if (next && !audioInitialized) initTerminal();
-  };
-
-  const toggleNotifications = () => {
-    if (!('Notification' in window)) return;
-    if (Notification.permission === 'default') {
-      initTerminal();
-    } else {
-      const next = !notificationsEnabled;
-      setNotificationsEnabled(next);
-      localStorage.setItem('libra_notifications_enabled', String(next));
-    }
+    if (next && !audioInitialized) initAudio();
   };
 
   const handleAcceptDisclosure = () => {
@@ -557,6 +507,7 @@ const App: React.FC = () => {
     );
   }
 
+  // Mandatory Session Acknowledgment for Educational Purpose
   if (!sessionAcknowledged) {
     return (
       <div className="fixed inset-0 z-[600] bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-4">
@@ -613,8 +564,8 @@ const App: React.FC = () => {
             <Zap size={40} />
           </div>
           <h2 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter">Initialize Terminal</h2>
-          <p className="text-slate-400 text-sm mb-8 max-w-xs">Tap below to activate real-time institutional alerts, audio feed and device notifications.</p>
-          <button onClick={initTerminal} className="w-full max-w-xs bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-900/40 uppercase tracking-[0.2em] text-xs transition-all active:scale-95">Activate Live Feed</button>
+          <p className="text-slate-400 text-sm mb-8 max-w-xs">Tap below to activate real-time institutional alerts and secure audio stream.</p>
+          <button onClick={initAudio} className="w-full max-w-xs bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-900/40 uppercase tracking-[0.2em] text-xs transition-all active:scale-95">Activate Live Feed</button>
         </div>
       )}
       <div className="fixed top-4 right-4 z-[100] flex flex-col items-end space-y-3">
@@ -629,14 +580,9 @@ const App: React.FC = () => {
           <button onClick={() => sync(true)} className="p-1.5 rounded-lg bg-slate-800 text-blue-400 border border-blue-500/20"><Database size={14} /></button>
         </div>
         
-        <div className="flex items-center space-x-2">
-            <button onClick={toggleNotifications} className={`p-4 rounded-full border shadow-2xl transition-all active:scale-90 ${notificationsEnabled ? 'bg-blue-500/20 border-blue-500/50 text-blue-400 shadow-blue-500/10' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
-              {notificationsEnabled ? <Bell size={32} /> : <BellOff size={32} />}
-            </button>
-            <button onClick={toggleSound} className={`p-4 rounded-full border shadow-2xl transition-all active:scale-90 ${soundEnabled ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400 shadow-cyan-500/10' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
-              {soundEnabled ? <Volume2 size={32} /> : <VolumeX size={32} />}
-            </button>
-        </div>
+        <button onClick={toggleSound} className={`p-4 rounded-full border shadow-2xl transition-all active:scale-90 ${soundEnabled ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400 shadow-cyan-500/10' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+          {soundEnabled ? <Volume2 size={32} /> : <VolumeX size={32} />}
+        </button>
 
         <a 
           href="https://oa.mynt.in/?ref=ZTN348" 
