@@ -11,13 +11,13 @@ import BookedTrades from './pages/BookedTrades';
 import MarketInsights from './pages/MarketInsights';
 import { User, WatchlistItem, TradeSignal, TradeStatus, LogEntry, ChatMessage, InsightData } from './types';
 import { fetchSheetData, updateSheetData } from './services/googleSheetsService';
-import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen, Briefcase, ExternalLink, MessageCircle, ShieldAlert, AlertTriangle, ArrowRight, CheckCircle2, Activity, Flame, ShieldCheck, Info } from 'lucide-react';
+import { Radio, CheckCircle, BarChart2, Volume2, VolumeX, Database, Zap, BookOpen, Briefcase, ExternalLink, MessageCircle, ShieldAlert, AlertTriangle, ArrowRight, CheckCircle2, Activity, Flame, ShieldCheck, Info, Bell, BellOff, RefreshCw } from 'lucide-react';
 
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; 
 const SESSION_KEY = 'libra_user_session';
 const DISCLOSURE_KEY = 'libra_risk_accepted';
 const SESSION_ACK_KEY = 'libra_session_acknowledged';
-const POLL_INTERVAL = 8000; 
+const POLL_INTERVAL = 5000; 
 const MAJOR_ALERT_DURATION = 15000; 
 const INTEL_ALERT_DURATION = 60000; 
 
@@ -76,8 +76,12 @@ const App: React.FC = () => {
   const [insights, setInsights] = useState<InsightData[]>([]);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'error' | 'syncing'>('syncing');
   const [lastSyncTime, setLastSyncTime] = useState<string>('--:--:--');
-  // Default to true (enabled) for new users (null !== 'false' is true)
   const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('libra_sound_enabled') !== 'false');
+  const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
+    const saved = localStorage.getItem('libra_notifications_enabled');
+    const browserGranted = 'Notification' in window && Notification.permission === 'granted';
+    return saved === 'true' && browserGranted;
+  });
   const [audioInitialized, setAudioInitialized] = useState(false);
   
   const [activeMajorAlerts, setActiveMajorAlerts] = useState<Record<string, number>>({});
@@ -104,10 +108,32 @@ const App: React.FC = () => {
       if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
       setAudioInitialized(true);
+
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+          const granted = permission === 'granted';
+          setNotificationsEnabled(granted);
+          localStorage.setItem('libra_notifications_enabled', String(granted));
+        });
+      }
     } catch (e) {
       console.error("Audio init failed", e);
     }
   }, []);
+
+  const sendBrowserNotification = useCallback((title: string, body: string) => {
+    if (notificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(title, {
+          body,
+          icon: 'https://cdn-icons-png.flaticon.com/512/2619/2619245.png', 
+          tag: 'libra-alert'
+        });
+      } catch (e) {
+        console.error("Notification failed", e);
+      }
+    }
+  }, [notificationsEnabled]);
 
   useEffect(() => {
     window.addEventListener('click', initAudio, { once: true });
@@ -260,6 +286,7 @@ const App: React.FC = () => {
         let isBTSTUpdate = false;
         let targetSid: string | null = null;
         let topIndex = -1;
+        let notificationMsg = "";
         
         const now = Date.now();
         const expirationTime = now + MAJOR_ALERT_DURATION;
@@ -289,6 +316,7 @@ const App: React.FC = () => {
                   if (!isInitial && prevSignalsRef.current.length > 0) {
                     ALL_SIGNAL_KEYS.forEach(k => diff.add(k));
                     majorUpdateFound = signalChangeDetected = true;
+                    notificationMsg = `NEW SIGNAL: ${s.instrument} ${s.symbol} ${s.type} @ ${s.entryPrice}`;
                   }
                 } else {
                   ALL_SIGNAL_KEYS.forEach(k => {
@@ -298,6 +326,11 @@ const App: React.FC = () => {
                       diff.add(k);
                       if (ALERT_TRIGGER_KEYS.includes(k as keyof TradeSignal)) {
                          majorUpdateFound = signalChangeDetected = true;
+                         if (k === 'status') {
+                           notificationMsg = `STATUS UPDATE: ${s.instrument} is now ${s.status}`;
+                         } else if (k === 'targetsHit' && newVal > (oldVal || 0)) {
+                           notificationMsg = `TARGET HIT: ${s.instrument} Level ${newVal} Cleared!`;
+                         }
                          if (k === 'status' && (s.status === TradeStatus.STOPPED || s.status === TradeStatus.EXITED || s.status === TradeStatus.ALL_TARGET)) {
                             isCriticalAlert = true;
                          }
@@ -344,12 +377,14 @@ const App: React.FC = () => {
           if (latestAdminMsg && latestAdminMsg.id !== lastIntelIdRef.current) {
             intelChangeDetected = true;
             lastIntelIdRef.current = latestAdminMsg.id;
+            sendBrowserNotification("Admin Intelligence Broadcast", latestAdminMsg.text);
           }
         }
 
         if (!isInitial) {
            if (signalChangeDetected) {
              playLongBeep(isCriticalAlert, isBTSTUpdate);
+             if (notificationMsg) sendBrowserNotification("Terminal Execution Alert", notificationMsg);
              if (targetSid) handleRedirectToCard(targetSid);
            } else if (intelChangeDetected) {
              playIntelAlert();
@@ -379,7 +414,7 @@ const App: React.FC = () => {
     } finally {
       isFetchingRef.current = false;
     }
-  }, [playLongBeep, playUpdateBlip, playIntelAlert, handleRedirectToCard]);
+  }, [playLongBeep, playUpdateBlip, playIntelAlert, handleRedirectToCard, sendBrowserNotification]);
 
   const handleSignalUpdate = useCallback(async (updated: TradeSignal): Promise<boolean> => {
     const success = await updateSheetData('signals', 'UPDATE_SIGNAL', updated, updated.id);
@@ -439,6 +474,33 @@ const App: React.FC = () => {
     localStorage.setItem('libra_sound_enabled', String(next));
     if (!next) stopAlertAudio();
     if (next && !audioInitialized) initAudio();
+  };
+
+  const toggleNotifications = () => {
+    if (!('Notification' in window)) {
+      alert("This browser does not support desktop notifications.");
+      return;
+    }
+    
+    if (Notification.permission === 'denied') {
+      alert("Notifications are blocked in your browser settings. Please enable them to receive terminal alerts.");
+      return;
+    }
+
+    if (Notification.permission === 'granted') {
+      const next = !notificationsEnabled;
+      setNotificationsEnabled(next);
+      localStorage.setItem('libra_notifications_enabled', String(next));
+    } else {
+      Notification.requestPermission().then(permission => {
+        const granted = permission === 'granted';
+        setNotificationsEnabled(granted);
+        localStorage.setItem('libra_notifications_enabled', String(granted));
+        if (!granted) {
+          alert("Permission was denied. Terminal notifications will not fire.");
+        }
+      });
+    }
   };
 
   const handleAcceptDisclosure = () => {
@@ -507,7 +569,6 @@ const App: React.FC = () => {
     );
   }
 
-  // Mandatory Session Acknowledgment for Educational Purpose
   if (!sessionAcknowledged) {
     return (
       <div className="fixed inset-0 z-[600] bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-4">
@@ -564,25 +625,33 @@ const App: React.FC = () => {
             <Zap size={40} />
           </div>
           <h2 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter">Initialize Terminal</h2>
-          <p className="text-slate-400 text-sm mb-8 max-w-xs">Tap below to activate real-time institutional alerts and secure audio stream.</p>
+          <p className="text-slate-400 text-sm mb-8 max-w-xs">Tap below to activate real-time institutional alerts, secure audio stream, and browser notifications.</p>
           <button onClick={initAudio} className="w-full max-w-xs bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl shadow-xl shadow-blue-900/40 uppercase tracking-[0.2em] text-xs transition-all active:scale-95">Activate Live Feed</button>
         </div>
       )}
       <div className="fixed top-4 right-4 z-[100] flex flex-col items-end space-y-3">
-        <div className={`bg-slate-900/95 backdrop-blur-md px-3 py-2 rounded-xl text-[10px] font-bold border shadow-2xl flex items-center ${connectionStatus === 'error' ? 'border-rose-500 bg-rose-950/20' : 'border-slate-800'}`}>
+        <div className={`bg-slate-900/95 backdrop-blur-md px-3 py-2 rounded-xl text-[10px] font-bold border shadow-2xl flex items-center transition-all ${connectionStatus === 'error' ? 'border-rose-500 bg-rose-950/20' : connectionStatus === 'syncing' ? 'border-blue-500 ring-2 ring-blue-500/50 animate-pulse' : 'border-slate-800'}`}>
           <div className="flex flex-col items-start mr-3">
               <span className="text-[9px] text-slate-500 uppercase tracking-tighter leading-none mb-1">Terminal Link</span>
               <div className="flex items-center">
-                 <div className={`w-1.5 h-1.5 rounded-full mr-1.5 ${connectionStatus === 'syncing' ? 'bg-blue-400 animate-pulse' : connectionStatus === 'error' ? 'bg-rose-500 animate-ping' : 'bg-emerald-500'}`}></div>
+                 <div className={`w-2 h-2 rounded-full mr-1.5 ${connectionStatus === 'syncing' ? 'bg-blue-400 animate-ping' : connectionStatus === 'error' ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`}></div>
                  <span className={`${connectionStatus === 'error' ? 'text-rose-400' : 'text-white'} font-mono`}>{connectionStatus === 'error' ? 'RETRYING...' : lastSyncTime}</span>
               </div>
           </div>
-          <button onClick={() => sync(true)} className="p-1.5 rounded-lg bg-slate-800 text-blue-400 border border-blue-500/20"><Database size={14} /></button>
+          <button onClick={() => sync(true)} className={`p-2 rounded-lg bg-slate-800 text-blue-400 border border-blue-500/20 transition-all ${connectionStatus === 'syncing' ? 'bg-blue-600 text-white animate-spin' : 'hover:scale-110'}`}>
+            {connectionStatus === 'syncing' ? <RefreshCw size={14} /> : <Database size={14} />}
+          </button>
         </div>
         
-        <button onClick={toggleSound} className={`p-4 rounded-full border shadow-2xl transition-all active:scale-90 ${soundEnabled ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400 shadow-cyan-500/10' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
-          {soundEnabled ? <Volume2 size={32} /> : <VolumeX size={32} />}
-        </button>
+        <div className="flex flex-col items-end space-y-2">
+          <button onClick={toggleSound} className={`p-3 rounded-full border shadow-2xl transition-all active:scale-90 ${soundEnabled ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400 shadow-cyan-500/10' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+            {soundEnabled ? <Volume2 size={24} /> : <VolumeX size={24} />}
+          </button>
+
+          <button onClick={toggleNotifications} className={`p-3 rounded-full border shadow-2xl transition-all active:scale-90 ${notificationsEnabled ? 'bg-blue-500 border-blue-400 text-white shadow-blue-500/40' : 'bg-slate-800 border-slate-700 text-slate-500'}`}>
+            {notificationsEnabled ? <Bell size={24} /> : <BellOff size={24} />}
+          </button>
+        </div>
 
         <a 
           href="https://oa.mynt.in/?ref=ZTN348" 
